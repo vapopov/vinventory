@@ -146,7 +146,14 @@ import Observation
             throw InventoryError.message("Enter a project and a positive quantity within available stock.")
         }
         let canonical = projects.first { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }?.name ?? trimmed
-        try repository.save(Allocation(partID: current.id, project: canonical, quantity: quantity, designators: designators.trimmingCharacters(in: .whitespacesAndNewlines)))
+        let existing = allocations.filter { $0.partID == current.id && $0.project.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(canonical) == .orderedSame }
+        var combined = existing.first ?? Allocation(partID: current.id, project: canonical, quantity: 0)
+        combined.project = canonical
+        combined.quantity = existing.reduce(quantity) { $0 + $1.quantity }
+        combined.designators = (existing.map(\.designators) + [designators])
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }.joined(separator: ", ")
+        try repository.saveMergedAllocation(combined, removing: Array(existing.dropFirst()))
         try reload()
     }
     func saveProjectDescription(name: String, description: String) throws {
