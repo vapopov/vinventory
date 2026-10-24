@@ -12,7 +12,7 @@ struct ViewSwitcher: View {
             }.foregroundStyle(Theme.yellow).padding(.horizontal, 14)
                 .frame(width: 150, height: 34).background(Theme.raised)
         }.buttonStyle(.plain).accessibilityLabel("View switcher: \(selection.rawValue)")
-            .help("Switch between Parts and Storage")
+            .help("Switch between Parts, Storage, and Projects")
             .popover(isPresented: $showingMenu, arrowEdge: .bottom) {
                 VStack(spacing: 2) {
                     ForEach(InventorySection.allCases, id: \.self) { item in

@@ -4,7 +4,19 @@ import AppKit
 struct PartsTable: NSViewRepresentable {
     var parts: [Part]
     @Binding var selection: String?
+    var allocations: [Allocation]? = nil
+    var rowNumberOffset = 0
+    var saveDesignators: ((Allocation, String) throws -> Void)? = nil
+    var releaseAllocation: ((Allocation) -> Void)? = nil
     var preview: ((Part, PartPreviewDismissAction) -> AnyView)? = nil
+    private var rows: [PartTableRow] {
+        guard let allocations else { return parts.map { PartTableRow(id: $0.id, part: $0) } }
+        let lookup = Dictionary(uniqueKeysWithValues: parts.map { ($0.id, $0) })
+        return allocations.enumerated().compactMap { index, allocation in
+            guard let part = lookup[allocation.partID] else { return nil }
+            return PartTableRow(id: allocation.id, part: part, allocation: allocation, number: rowNumberOffset + index + 1)
+        }
+    }
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSScrollView()
@@ -29,7 +41,8 @@ struct PartsTable: NSViewRepresentable {
         table.action = #selector(Coordinator.rowClicked(_:))
         scroll.contentView.postsBoundsChangedNotifications = true
         context.coordinator.observeScrolling(scroll.contentView)
-        let columns: [(String, String, CGFloat)] = [("number", "Part Number", 160), ("manufacturer", "Manufacturer", 150), ("description", "Description", 220), ("package", "Package", 90), ("value", "Value", 80), ("tolerance", "Tolerance", 85), ("stock", "Stock Balance", 110), ("storage", "Storage", 120)]
+        var columns: [(String, String, CGFloat)] = [("number", "Part Number", 160), ("manufacturer", "Manufacturer", 150), ("description", "Description", 220), ("package", "Package", 90), ("value", "Value", 80), ("tolerance", "Tolerance", 85), ("stock", "Stock Balance", 110), ("storage", "Storage", 120)]
+        if allocations != nil { columns.insert(contentsOf: [("rowNumber", "#", 40), ("designators", "Designators", 180), ("quantity", "Qty", 65), ("release", "", 80)], at: 0) }
         for (key, title, width) in columns {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(key))
             column.title = title; column.width = width; column.minWidth = 55
@@ -42,35 +55,40 @@ struct PartsTable: NSViewRepresentable {
     }
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         let coordinator = context.coordinator
-        let changed = coordinator.parent.parts != parts
-        let rowsChanged = coordinator.parent.parts.map(\.id) != parts.map(\.id)
+        let updatedRows = rows
+        let changed = coordinator.rows != updatedRows
+        let rowsChanged = coordinator.rows.map(\.id) != updatedRows.map(\.id)
         if rowsChanged { coordinator.closePreview() }
         coordinator.parent = self
+        coordinator.rows = updatedRows
         guard let table = coordinator.table else { return }
         coordinator.updating = true
-        if changed || table.numberOfRows != parts.count { table.reloadData() }
-        if let index = parts.firstIndex(where: { $0.id == selection }) {
+        if changed || table.numberOfRows != updatedRows.count { table.reloadData() }
+        if let index = updatedRows.firstIndex(where: { $0.id == selection }) {
             if table.selectedRow != index { table.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false) }
         } else { table.deselectAll(nil) }
         coordinator.updating = false
-        if let id = coordinator.previewPartID, !parts.contains(where: { $0.id == id }) { coordinator.closePreview() }
+        if let id = coordinator.previewPartID, !updatedRows.contains(where: { $0.id == id }) { coordinator.closePreview() }
     }
     static func dismantleNSView(_ nsView: NSScrollView, coordinator: Coordinator) { coordinator.stop() }
     final class Coordinator: NSObject, NSTableViewDelegate, NSTableViewDataSource, NSPopoverDelegate {
         var parent: PartsTable
         weak var table: NSTableView?
         var updating = false
+        var rows: [PartTableRow]
         var previewPartID: String?
         private var popover: NSPopover?
         private var scrollObserver: NSObjectProtocol?
-        init(_ parent: PartsTable) { self.parent = parent }
+        init(_ parent: PartsTable) { self.parent = parent; rows = parent.rows }
         func observeScrolling(_ clip: NSClipView) {
             scrollObserver = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: clip, queue: .main) { [weak self] _ in self?.closePreview() }
         }
         @objc func rowClicked(_ sender: NSTableView) {
-            guard let builder = parent.preview, parent.parts.indices.contains(sender.clickedRow) else { return }
+            guard let builder = parent.preview, rows.indices.contains(sender.clickedRow) else { return }
+            if sender.clickedColumn >= 0, ["designators", "release"].contains(sender.tableColumns[sender.clickedColumn].identifier.rawValue) { return }
             let row = sender.clickedRow
-            let part = parent.parts[row]
+            let item = rows[row]
+            let part = item.part
             closePreview()
             let popup = NSPopover()
             popup.behavior = .semitransient
@@ -81,8 +99,9 @@ struct PartsTable: NSViewRepresentable {
             popup.contentViewController = NSHostingController(rootView: builder(part, dismiss))
             popup.contentSize = NSSize(width: 560, height: 420)
             popover = popup
-            previewPartID = part.id
-            let cell = sender.frameOfCell(atColumn: 0, row: row).intersection(sender.visibleRect)
+            previewPartID = item.id
+            let anchorColumn = sender.tableColumns.firstIndex { $0.identifier.rawValue == "number" } ?? 0
+            let cell = sender.frameOfCell(atColumn: anchorColumn, row: row).intersection(sender.visibleRect)
             let anchor = cell.isNull || cell.isEmpty ? sender.rect(ofRow: row).intersection(sender.visibleRect) : cell
             popup.show(relativeTo: anchor, of: sender, preferredEdge: .maxX)
         }
@@ -100,13 +119,26 @@ struct PartsTable: NSViewRepresentable {
             scrollObserver = nil
         }
         deinit { stop() }
-        func numberOfRows(in tableView: NSTableView) -> Int { parent.parts.count }
+        func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
         func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { InventoryRowView() }
         func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-            guard parent.parts.indices.contains(row), let key = tableColumn?.identifier.rawValue else { return nil }
-            let part = parent.parts[row]
+            guard rows.indices.contains(row), let key = tableColumn?.identifier.rawValue else { return nil }
+            let item = rows[row]
+            let part = item.part
+            if let allocation = item.allocation {
+                if key == "designators" {
+                    let save = parent.saveDesignators
+                    return hostingCell(InlineTextCell(value: allocation.designators, title: "Designators for \(part.number)") { value in try save?(allocation, value) })
+                }
+                if key == "release" {
+                    let release = parent.releaseAllocation
+                    return hostingCell(Button("Release") { release?(allocation) }.buttonStyle(.plain).foregroundStyle(Theme.yellow).font(.system(size: 12)).accessibilityLabel("Release allocation for \(part.number)"))
+                }
+            }
             let text: String
             switch key {
+            case "rowNumber": text = item.number.map(String.init) ?? ""
+            case "quantity": text = item.allocation?.quantity.formatted() ?? ""
             case "number": text = part.number
             case "manufacturer": text = part.manufacturer
             case "description": text = part.description
@@ -121,20 +153,34 @@ struct PartsTable: NSViewRepresentable {
             label.font = .systemFont(ofSize: 13, weight: key == "number" ? .medium : .regular)
             label.textColor = key == "stock" ? NSColor(part.stock > 0 ? Theme.green : Theme.muted) : NSColor(key == "storage" ? Theme.muted : .white.opacity(0.88))
             label.lineBreakMode = .byTruncatingTail
-            label.alignment = key == "stock" ? .right : .left
+            label.alignment = ["stock", "quantity", "rowNumber"].contains(key) ? .right : .left
             label.translatesAutoresizingMaskIntoConstraints = false
             cell.addSubview(label); cell.textField = label
             NSLayoutConstraint.activate([label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 9), label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -9), label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)])
             cell.toolTip = text
             return cell
         }
+        private func hostingCell<Content: View>(_ content: Content) -> NSTableCellView {
+            let cell = NSTableCellView()
+            let host = NSHostingView(rootView: content)
+            host.translatesAutoresizingMaskIntoConstraints = false
+            cell.addSubview(host)
+            NSLayoutConstraint.activate([host.leadingAnchor.constraint(equalTo: cell.leadingAnchor), host.trailingAnchor.constraint(equalTo: cell.trailingAnchor), host.topAnchor.constraint(equalTo: cell.topAnchor), host.bottomAnchor.constraint(equalTo: cell.bottomAnchor)])
+            return cell
+        }
         func tableViewSelectionDidChange(_ notification: Notification) {
             guard !updating, let table else { return }
-            let id = parent.parts.indices.contains(table.selectedRow) ? parent.parts[table.selectedRow].id : nil
+            let id = rows.indices.contains(table.selectedRow) ? rows[table.selectedRow].id : nil
             if previewPartID != id { closePreview() }
             parent.selection = id
         }
     }
+}
+struct PartTableRow: Identifiable, Equatable {
+    var id: String
+    var part: Part
+    var allocation: Allocation? = nil
+    var number: Int? = nil
 }
 private final class InventoryRowView: NSTableRowView {
     override var interiorBackgroundStyle: NSView.BackgroundStyle { .emphasized }

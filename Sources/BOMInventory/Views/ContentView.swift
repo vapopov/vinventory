@@ -4,6 +4,7 @@ struct ContentView: View {
     @State private var query = ""
     @State private var section = InventorySection.parts
     @State private var storageSelection: String?
+    @State private var projectSelection: String?
     @State private var selection: String?
     @State private var editor: Part?
     @State private var deleting = false
@@ -30,8 +31,10 @@ struct ContentView: View {
                         EmptyState(title: store.parts.isEmpty ? "Your inventory starts here" : "Select a part", subtitle: store.parts.isEmpty ? "Add your first component to track stock, storage, and project allocations." : "Select a row to view its details and manage inventory.").frame(minWidth: 440)
                     }
                 }
-            } else {
+            } else if section == .storage {
                 StorageView(store: store, parts: results, locationSelection: $storageSelection, partSelection: $selection, editPart: { editor = $0 }, showPart: navigateToPart)
+            } else {
+                ProjectsView(store: store, query: query, projectSelection: $projectSelection, partSelection: $selection, editPart: { editor = $0 }, showPart: navigateToPart)
             }
             HStack { Circle().fill(Theme.green).frame(width: 6, height: 6); Text("LOCAL INVENTORY").font(.system(size: 10, weight: .semibold)); Spacer(); Text("SQLite  •  \(store.parts.count) parts").font(.system(size: 11)) }.foregroundStyle(Theme.muted).padding(.horizontal, 14).frame(height: 26).background(Theme.background)
         }
@@ -58,7 +61,7 @@ struct ContentView: View {
             Spacer()
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(Theme.muted)
-                TextField(section == .parts ? "Search parts, values, packages…" : "Search parts in storage…", text: $query).textFieldStyle(.plain).frame(width: 230)
+                TextField(section == .parts ? "Search parts, values, packages…" : (section == .storage ? "Search parts in storage…" : "Search parts or designators…"), text: $query).textFieldStyle(.plain).frame(width: 230)
                 if !query.isEmpty { Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.muted) }.buttonStyle(.plain) }
             }.padding(.horizontal, 10).frame(height: 34).background(Theme.raised)
             ToolButton(symbol: "barcode.viewfinder", title: "Search by barcode") { scanning.toggle() }
@@ -74,6 +77,7 @@ struct ContentView: View {
         }.padding(.horizontal, 10).frame(height: 52).background(Theme.background)
     }
     private func navigateToPart(_ part: Part) {
+        if !results.contains(where: { $0.id == part.id }) { query = part.barcode }
         section = .parts
         selection = part.id
         page = (results.firstIndex { $0.id == part.id } ?? 0) / pageSize
@@ -83,6 +87,9 @@ struct ContentView: View {
         page = 0
         if let part = store.search(barcodeQuery).first {
             if section == .storage { storageSelection = store.locations.first { $0.contains(part) }?.id }
+            if section == .projects, let allocation = store.allocations.first(where: { $0.partID == part.id }) {
+                projectSelection = store.projects.first { $0.contains(allocation) }?.id
+            }
             selection = part.id
         } else { selection = nil }
         scanning = false

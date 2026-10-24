@@ -15,4 +15,5 @@ struct StorageLocation: Identifiable, Equatable {
 enum InventorySection: String, CaseIterable {
     case parts = "PARTS"
     case storage = "STORAGE"
+    case projects = "PROJECTS"
 }

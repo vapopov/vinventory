@@ -49,10 +49,23 @@ struct PartImage: Codable, Equatable {
     var paths: [String] { [originalPath, thumbnailPath] + (previewPath.map { [$0] } ?? []) }
 }
 struct Allocation: Identifiable, Codable, Equatable {
-    var id = UUID().uuidString
+    var id: String
     var partID: String
     var project: String
     var quantity: Int
+    var designators: String
+    init(id: String = UUID().uuidString, partID: String, project: String, quantity: Int, designators: String = "") {
+        self.id = id; self.partID = partID; self.project = project; self.quantity = quantity; self.designators = designators
+    }
+    private enum CodingKeys: String, CodingKey { case id, partID, project, quantity, designators }
+    init(from decoder: Decoder) throws {
+        let data = try decoder.container(keyedBy: CodingKeys.self)
+        id = try data.decode(String.self, forKey: .id)
+        partID = try data.decode(String.self, forKey: .partID)
+        project = try data.decode(String.self, forKey: .project)
+        quantity = try data.decode(Int.self, forKey: .quantity)
+        designators = try data.decodeIfPresent(String.self, forKey: .designators) ?? ""
+    }
 }
 enum InventoryError: LocalizedError {
     case message(String)

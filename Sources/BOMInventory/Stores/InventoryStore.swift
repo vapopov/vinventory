@@ -5,6 +5,7 @@ import Observation
     private let attachmentStorage: AttachmentStorage?
     var parts: [Part] = []
     var allocations: [Allocation] = []
+    var projects: [Project] = []
     var labels: [String] = []
     var manufacturers: [String] = []
     var packages: [String] = []
@@ -27,6 +28,7 @@ import Observation
             }
         }
         allocations = try repository.loadAllocations()
+        projects = try repository.loadProjects().sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         labels = try repository.loadLabels()
         manufacturers = try repository.loadSuggestions(for: .manufacturer)
         packages = try repository.loadSuggestions(for: .package)
@@ -119,9 +121,29 @@ import Observation
         try reload()
         try cleanup.get()
     }
-    func allocate(_ part: Part, project: String, quantity: Int) throws {
-        guard !project.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, quantity > 0, quantity <= available(part) else { throw InventoryError.message("Enter a project and a positive quantity within available stock.") }
-        try repository.save(Allocation(partID: part.id, project: project, quantity: quantity)); try reload()
+    func allocate(_ part: Part, project: String, quantity: Int, designators: String = "") throws {
+        let trimmed = project.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let current = parts.first(where: { $0.id == part.id }), !trimmed.isEmpty, quantity > 0, quantity <= available(current) else {
+            throw InventoryError.message("Enter a project and a positive quantity within available stock.")
+        }
+        let canonical = projects.first { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }?.name ?? trimmed
+        try repository.save(Allocation(partID: current.id, project: canonical, quantity: quantity, designators: designators.trimmingCharacters(in: .whitespacesAndNewlines)))
+        try reload()
+    }
+    func saveProjectDescription(name: String, description: String) throws {
+        guard let project = projects.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) else {
+            throw InventoryError.message("This project is no longer available.")
+        }
+        try repository.saveProjectDescription(name: project.name, description: description.trimmingCharacters(in: .whitespacesAndNewlines))
+        projects = try repository.loadProjects().sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+    func saveDesignators(allocationID: String, value: String) throws {
+        guard var allocation = allocations.first(where: { $0.id == allocationID }) else {
+            throw InventoryError.message("This allocation has already been released.")
+        }
+        allocation.designators = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        try repository.save(allocation)
+        try reload()
     }
     func release(_ allocation: Allocation) throws { try repository.delete(allocation); try reload() }
     func search(_ query: String) -> [Part] {

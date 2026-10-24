@@ -4,10 +4,11 @@ struct PaginationBar: View {
     var count: Int
     @Binding var page: Int
     @Binding var pageSize: Int
+    var unit = "part"
     private var pages: Int { max(1, (count + pageSize - 1) / pageSize) }
     var body: some View {
         HStack(spacing: 12) {
-            Text("\(count) parts").foregroundStyle(Theme.yellow)
+            Text("\(count) \(unit)\(count == 1 ? "" : "s")").foregroundStyle(Theme.yellow)
             Spacer()
             pageButton("chevron.left.2", label: "First page", disabled: page == 0) { page = 0 }
             pageButton("chevron.left", label: "Previous page", disabled: page == 0) { page -= 1 }

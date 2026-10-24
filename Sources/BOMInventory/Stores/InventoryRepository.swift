@@ -1,6 +1,8 @@
 import Foundation
 import CSQLite
 protocol InventoryRepository {
+    func loadProjects() throws -> [Project]
+    func saveProjectDescription(name: String, description: String) throws
     func loadStorageDescriptions() throws -> [String: String]
     func saveStorageDescription(name: String, description: String) throws
     func pruneUnusedSuggestions() throws
@@ -25,6 +27,8 @@ final class SQLiteRepository: InventoryRepository {
         try execute("CREATE TABLE IF NOT EXISTS labels (name TEXT PRIMARY KEY COLLATE NOCASE, last_used INTEGER NOT NULL)")
         try execute("CREATE TABLE IF NOT EXISTS field_values (field TEXT NOT NULL, name TEXT NOT NULL COLLATE NOCASE, last_used INTEGER NOT NULL, PRIMARY KEY(field, name))")
         try execute("CREATE TABLE IF NOT EXISTS storage_descriptions (name TEXT PRIMARY KEY COLLATE NOCASE, description TEXT NOT NULL)")
+        try execute("CREATE TABLE IF NOT EXISTS projects (name TEXT PRIMARY KEY COLLATE NOCASE, description TEXT NOT NULL)")
+        for allocation in try loadAllocations() { try ensureProject(allocation.project) }
         // Older payloads decode their Type into labels; seed the persistent catalog once.
         for part in try loadParts() {
             for field in RecentField.allCases {
@@ -38,7 +42,7 @@ final class SQLiteRepository: InventoryRepository {
             }
         }
         try pruneUnusedSuggestions()
-        try execute("PRAGMA user_version = 4")
+        try execute("PRAGMA user_version = 5")
     }
     deinit { sqlite3_close(db) }
     private func execute(_ sql: String, values: [String] = []) throws {
@@ -68,6 +72,25 @@ final class SQLiteRepository: InventoryRepository {
         return results
     }
     private func json<T: Encodable>(_ value: T) throws -> String { String(decoding: try JSONEncoder().encode(value), as: UTF8.self) }
+    private func ensureProject(_ name: String) throws {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw InventoryError.message("A project name is required.") }
+        try execute("INSERT OR IGNORE INTO projects VALUES (?, '')", values: [trimmed])
+    }
+    func loadProjects() throws -> [Project] {
+        let statement = try prepare("SELECT name, description FROM projects ORDER BY name COLLATE NOCASE", values: [])
+        defer { sqlite3_finalize(statement) }
+        var projects: [Project] = []
+        while true {
+            let status = sqlite3_step(statement)
+            if status == SQLITE_DONE { return projects }
+            guard status == SQLITE_ROW, let name = sqlite3_column_text(statement, 0), let description = sqlite3_column_text(statement, 1) else { throw failure() }
+            projects.append(Project(name: String(cString: name), description: String(cString: description)))
+        }
+    }
+    func saveProjectDescription(name: String, description: String) throws {
+        try execute("UPDATE projects SET description=? WHERE name=?", values: [description, name])
+    }
     func loadStorageDescriptions() throws -> [String: String] {
         let statement = try prepare("SELECT name, description FROM storage_descriptions", values: [])
         defer { sqlite3_finalize(statement) }
@@ -129,6 +152,13 @@ final class SQLiteRepository: InventoryRepository {
     func loadAllocations() throws -> [Allocation] { try load("allocations") }
     func save(_ part: Part) throws { try execute("INSERT INTO parts VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET barcode=excluded.barcode,payload=excluded.payload", values: [part.id, part.barcode, try json(part)]) }
     func delete(_ part: Part) throws { try execute("DELETE FROM parts WHERE id=?", values: [part.id]) }
-    func save(_ allocation: Allocation) throws { try execute("INSERT INTO allocations VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload", values: [allocation.id, allocation.partID, try json(allocation)]) }
+    func save(_ allocation: Allocation) throws {
+        try execute("BEGIN IMMEDIATE")
+        do {
+            try ensureProject(allocation.project)
+            try execute("INSERT INTO allocations VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET part_id=excluded.part_id,payload=excluded.payload", values: [allocation.id, allocation.partID, try json(allocation)])
+            try execute("COMMIT")
+        } catch { try? execute("ROLLBACK"); throw error }
+    }
     func delete(_ allocation: Allocation) throws { try execute("DELETE FROM allocations WHERE id=?", values: [allocation.id]) }
 }

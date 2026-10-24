@@ -9,6 +9,7 @@ struct PartDetailView: View {
     @State private var adjusting = false
     @State private var project = ""
     @State private var quantity = 1
+    @State private var designators = ""
     @State private var stock = 0
     var body: some View {
         VSplitView {
@@ -22,7 +23,7 @@ struct PartDetailView: View {
                     Spacer()
                 }.frame(height: 46).background(Theme.raised)
                 HStack(spacing: 8) {
-                    ToolButton(symbol: "plus", title: tab == 0 ? "Set stock" : "Allocate to project") { if tab == 0 { stock = part.stock; adjusting = true } else { quantity = 1; project = ""; allocating = true } }
+                    ToolButton(symbol: "plus", title: tab == 0 ? "Set stock" : "Allocate to project") { if tab == 0 { stock = part.stock; adjusting = true } else { quantity = 1; project = ""; designators = ""; allocating = true } }
                     Text(tab == 0 ? "Manage physical stock" : "Reserve stock for a project").font(.system(size: 12)).foregroundStyle(Theme.muted)
                     Spacer()
                 }.padding(8).background(Theme.raised.opacity(0.65))
@@ -39,10 +40,13 @@ struct PartDetailView: View {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Allocate to project").font(.title2.bold())
                 Text("\(store.available(part)) available • \(part.number)").foregroundStyle(Theme.muted)
-                TextField("Project name", text: $project)
+                LabeledContent("Project") {
+                    SuggestionField(text: $project, placeholder: "", suggestions: store.projects.map(\.name), filterOnTyping: true, choose: { project = $0 }, submit: {}).accessibilityLabel("Project name")
+                }
                 TextField("Quantity", value: $quantity, format: .number)
-                HStack { Spacer(); Button("Cancel") { allocating = false }; Button("Allocate") { do { try store.allocate(part, project: project, quantity: quantity); allocating = false } catch { store.error = error.localizedDescription; allocating = false } }.keyboardShortcut(.defaultAction) }
-            }.textFieldStyle(.roundedBorder).padding(24).frame(width: 390)
+                TextField("Designators", text: $designators).help("For example: C16-C20 or R3, R4, R11")
+                HStack { Spacer(); Button("Cancel") { allocating = false }; Button("Allocate") { do { try store.allocate(part, project: project, quantity: quantity, designators: designators); allocating = false } catch { store.error = error.localizedDescription; allocating = false } }.keyboardShortcut(.defaultAction) }
+            }.textFieldStyle(.roundedBorder).padding(24).frame(width: 430).suggestionOverlay()
         }
         .sheet(isPresented: $adjusting) {
             VStack(alignment: .leading, spacing: 18) {
@@ -68,7 +72,7 @@ struct PartDetailView: View {
             let allocations = store.allocations.filter { $0.partID == part.id }
             if allocations.isEmpty { Text("No project allocations").foregroundStyle(Theme.muted).padding(30) }
             ForEach(allocations) { allocation in
-                HStack { Text(allocation.project).lineLimit(1); Spacer(); Text(allocation.quantity.formatted()).monospacedDigit(); Button("Release") { store.perform { try store.release(allocation) } }.buttonStyle(.plain).foregroundStyle(Theme.yellow).padding(.leading, 18) }.padding(14).background(Theme.panel.opacity(0.6))
+                HStack { VStack(alignment: .leading, spacing: 3) { Text(allocation.project).lineLimit(1); if !allocation.designators.isEmpty { Text(allocation.designators).font(.caption).foregroundStyle(Theme.muted).lineLimit(1) } }; Spacer(); Text(allocation.quantity.formatted()).monospacedDigit(); Button("Release") { store.perform { try store.release(allocation) } }.buttonStyle(.plain).foregroundStyle(Theme.yellow).padding(.leading, 18) }.padding(14).background(Theme.panel.opacity(0.6))
                 Divider()
             }
         }
