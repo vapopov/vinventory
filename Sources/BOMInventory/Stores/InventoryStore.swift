@@ -9,6 +9,7 @@ import Observation
     var manufacturers: [String] = []
     var packages: [String] = []
     var storageLocations: [String] = []
+    var storageDescriptions: [String: String] = [:]
     var error: String?
     init(repository: InventoryRepository, attachmentStorage: AttachmentStorage? = nil) {
         self.repository = repository
@@ -30,6 +31,23 @@ import Observation
         manufacturers = try repository.loadSuggestions(for: .manufacturer)
         packages = try repository.loadSuggestions(for: .package)
         storageLocations = try repository.loadSuggestions(for: .storage)
+        storageDescriptions = try repository.loadStorageDescriptions()
+    }
+    var locations: [StorageLocation] {
+        var result = storageLocations.sorted { $0.localizedStandardCompare($1) == .orderedAscending }.map { name in
+            StorageLocation(name: name, description: storageDescriptions.first { $0.key.caseInsensitiveCompare(name) == .orderedSame }?.value ?? "")
+        }
+        if parts.contains(where: { $0.storage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            result.insert(StorageLocation(name: nil, description: "Parts without an assigned storage location"), at: 0)
+        }
+        return result
+    }
+    func saveStorageDescription(name: String, description: String) throws {
+        guard let canonical = storageLocations.first(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) else {
+            throw InventoryError.message("This storage location is no longer assigned to any parts.")
+        }
+        try repository.saveStorageDescription(name: canonical, description: description.trimmingCharacters(in: .whitespacesAndNewlines))
+        storageDescriptions = try repository.loadStorageDescriptions()
     }
     // Draft labels stay on the editor's part; only saved assignments enter autocomplete.
     func labelName(for input: String) throws -> String {

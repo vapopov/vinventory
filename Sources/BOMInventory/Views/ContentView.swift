@@ -2,6 +2,8 @@ import SwiftUI
 struct ContentView: View {
     @Bindable var store: InventoryStore
     @State private var query = ""
+    @State private var section = InventorySection.parts
+    @State private var storageSelection: String?
     @State private var selection: String?
     @State private var editor: Part?
     @State private var deleting = false
@@ -16,16 +18,20 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             toolbar
-            HSplitView {
-                VStack(spacing: 0) {
-                    PartsTable(parts: visible, selection: $selection)
-                    pagination
-                }.frame(minWidth: 630, idealWidth: 930)
-                if let selected {
-                    PartDetailView(store: store, part: selected, edit: { editor = selected }).frame(minWidth: 440, idealWidth: 550)
-                } else {
-                    EmptyState(title: store.parts.isEmpty ? "Your inventory starts here" : "Select a part", subtitle: store.parts.isEmpty ? "Add your first component to track stock, storage, and project allocations." : "Select a row to view its details and manage inventory.").frame(minWidth: 440)
+            if section == .parts {
+                HSplitView {
+                    VStack(spacing: 0) {
+                        PartsTable(parts: visible, selection: $selection)
+                        PaginationBar(count: results.count, page: $page, pageSize: $pageSize)
+                    }.frame(minWidth: 630, idealWidth: 930)
+                    if let selected {
+                        PartDetailView(store: store, part: selected, edit: { editor = selected }).frame(minWidth: 440, idealWidth: 550)
+                    } else {
+                        EmptyState(title: store.parts.isEmpty ? "Your inventory starts here" : "Select a part", subtitle: store.parts.isEmpty ? "Add your first component to track stock, storage, and project allocations." : "Select a row to view its details and manage inventory.").frame(minWidth: 440)
+                    }
                 }
+            } else {
+                StorageView(store: store, parts: results, locationSelection: $storageSelection, partSelection: $selection, editPart: { editor = $0 })
             }
             HStack { Circle().fill(Theme.green).frame(width: 6, height: 6); Text("LOCAL INVENTORY").font(.system(size: 10, weight: .semibold)); Spacer(); Text("SQLite  •  \(store.parts.count) parts").font(.system(size: 11)) }.foregroundStyle(Theme.muted).padding(.horizontal, 14).frame(height: 26).background(Theme.background)
         }
@@ -33,14 +39,19 @@ struct ContentView: View {
         .sheet(item: $editor) { part in PartEditor(part: part, store: store) { updated in try store.save(updated, recordFieldUse: true); selection = updated.id } }
         .alert("Delete part?", isPresented: $deleting) { Button("Cancel", role: .cancel) {}; Button("Delete", role: .destructive) { if let selected { store.perform { try store.delete(selected) }; selection = nil } } } message: { Text("The selected part and its project allocations will be permanently removed.") }
         .alert("Inventory error", isPresented: Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })) { Button("OK") { store.error = nil } } message: { Text(store.error ?? "") }
+        .onChange(of: section) { _, _ in selection = nil; scanning = false }
         .onChange(of: query) { _, _ in page = 0 }
         .onChange(of: pageSize) { _, _ in page = 0 }
         .onChange(of: results.count) { _, _ in page = min(page, pages - 1) }
     }
     private var toolbar: some View {
         HStack(spacing: 5) {
-            HStack { Text("PARTS").fontWeight(.bold); Spacer() }.foregroundStyle(Theme.yellow).padding(.horizontal, 14).frame(width: 150, height: 34).background(Theme.raised)
-            ToolButton(symbol: "plus", title: "Add part (⌘N)") { editor = Part() }.keyboardShortcut("n")
+            ViewSwitcher(selection: $section)
+            ToolButton(symbol: "plus", title: "Add part (⌘N)") {
+                var part = Part()
+                if section == .storage { part.storage = store.locations.first { $0.id == storageSelection }?.name ?? "" }
+                editor = part
+            }.keyboardShortcut("n")
             ToolButton(symbol: "pencil", title: "Edit selected part (⌘E)") { editor = selected }.disabled(selected == nil).keyboardShortcut("e")
             ToolButton(symbol: "trash", title: "Delete selected part") { deleting = true }.disabled(selected == nil)
             Rectangle().fill(Theme.panel).frame(width: 1, height: 28).padding(.horizontal, 7)
@@ -48,7 +59,7 @@ struct ContentView: View {
             Spacer()
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(Theme.muted)
-                TextField("Search parts, values, packages…", text: $query).textFieldStyle(.plain).frame(width: 230)
+                TextField(section == .parts ? "Search parts, values, packages…" : "Search parts in storage…", text: $query).textFieldStyle(.plain).frame(width: 230)
                 if !query.isEmpty { Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.muted) }.buttonStyle(.plain) }
             }.padding(.horizontal, 10).frame(height: 34).background(Theme.raised)
             ToolButton(symbol: "barcode.viewfinder", title: "Search by barcode") { scanning.toggle() }
@@ -56,27 +67,20 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("Find by barcode").font(.headline)
                         Text("Scan with a USB scanner or paste a barcode, then press Return.").foregroundStyle(Theme.muted)
-                        TextField("Barcode", text: $barcodeQuery).onSubmit { query = barcodeQuery; page = 0; selection = store.search(barcodeQuery).first?.id; scanning = false }
-                        Button("Find part") { query = barcodeQuery; page = 0; selection = store.search(barcodeQuery).first?.id; scanning = false }
+                        TextField("Barcode", text: $barcodeQuery).onSubmit { findBarcode() }
+                        Button("Find part") { findBarcode() }
                     }.padding(20).frame(width: 340)
                 }
             Text("BOM INVENTORY").font(.system(size: 13, weight: .heavy)).foregroundStyle(Theme.background).padding(.horizontal, 14).frame(height: 34).background(Theme.yellow).padding(.leading, 8)
         }.padding(.horizontal, 10).frame(height: 52).background(Theme.background)
     }
-    private var pagination: some View {
-        HStack(spacing: 12) {
-            Text("\(results.count) parts").foregroundStyle(Theme.yellow)
-            Spacer()
-            pageButton("chevron.left.2", disabled: page == 0) { page = 0 }
-            pageButton("chevron.left", disabled: page == 0) { page -= 1 }
-            Text("Page \(page + 1) of \(pages)").monospacedDigit()
-            pageButton("chevron.right", disabled: page >= pages - 1) { page += 1 }
-            pageButton("chevron.right.2", disabled: page >= pages - 1) { page = pages - 1 }
-            Text(results.isEmpty ? "0 of 0" : "\(page * pageSize + 1)–\(min((page + 1) * pageSize, results.count)) of \(results.count)").foregroundStyle(Theme.muted).monospacedDigit()
-            Picker("Rows", selection: $pageSize) { Text("25").tag(25); Text("50").tag(50); Text("100").tag(100) }.labelsHidden().frame(width: 65)
-        }.padding(.horizontal, 12).frame(height: 38).background(Theme.raised)
-    }
-    private func pageButton(_ icon: String, disabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) { Image(systemName: icon) }.buttonStyle(.plain).disabled(disabled).accessibilityLabel(icon.contains("right") ? "Next page" : "Previous page")
+    private func findBarcode() {
+        query = barcodeQuery
+        page = 0
+        if let part = store.search(barcodeQuery).first {
+            if section == .storage { storageSelection = store.locations.first { $0.contains(part) }?.id }
+            selection = part.id
+        } else { selection = nil }
+        scanning = false
     }
 }

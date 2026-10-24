@@ -1,6 +1,8 @@
 import Foundation
 import CSQLite
 protocol InventoryRepository {
+    func loadStorageDescriptions() throws -> [String: String]
+    func saveStorageDescription(name: String, description: String) throws
     func pruneUnusedSuggestions() throws
     func loadSuggestions(for field: RecentField) throws -> [String]
     func registerSuggestion(_ name: String, for field: RecentField) throws
@@ -22,6 +24,7 @@ final class SQLiteRepository: InventoryRepository {
         try execute("CREATE TABLE IF NOT EXISTS allocations (id TEXT PRIMARY KEY, part_id TEXT NOT NULL REFERENCES parts(id) ON DELETE CASCADE, payload TEXT NOT NULL)")
         try execute("CREATE TABLE IF NOT EXISTS labels (name TEXT PRIMARY KEY COLLATE NOCASE, last_used INTEGER NOT NULL)")
         try execute("CREATE TABLE IF NOT EXISTS field_values (field TEXT NOT NULL, name TEXT NOT NULL COLLATE NOCASE, last_used INTEGER NOT NULL, PRIMARY KEY(field, name))")
+        try execute("CREATE TABLE IF NOT EXISTS storage_descriptions (name TEXT PRIMARY KEY COLLATE NOCASE, description TEXT NOT NULL)")
         // Older payloads decode their Type into labels; seed the persistent catalog once.
         for part in try loadParts() {
             for field in RecentField.allCases {
@@ -35,7 +38,7 @@ final class SQLiteRepository: InventoryRepository {
             }
         }
         try pruneUnusedSuggestions()
-        try execute("PRAGMA user_version = 3")
+        try execute("PRAGMA user_version = 4")
     }
     deinit { sqlite3_close(db) }
     private func execute(_ sql: String, values: [String] = []) throws {
@@ -65,6 +68,20 @@ final class SQLiteRepository: InventoryRepository {
         return results
     }
     private func json<T: Encodable>(_ value: T) throws -> String { String(decoding: try JSONEncoder().encode(value), as: UTF8.self) }
+    func loadStorageDescriptions() throws -> [String: String] {
+        let statement = try prepare("SELECT name, description FROM storage_descriptions", values: [])
+        defer { sqlite3_finalize(statement) }
+        var descriptions: [String: String] = [:]
+        while true {
+            let status = sqlite3_step(statement)
+            if status == SQLITE_DONE { return descriptions }
+            guard status == SQLITE_ROW, let name = sqlite3_column_text(statement, 0), let description = sqlite3_column_text(statement, 1) else { throw failure() }
+            descriptions[String(cString: name)] = String(cString: description)
+        }
+    }
+    func saveStorageDescription(name: String, description: String) throws {
+        try execute("INSERT INTO storage_descriptions VALUES (?,?) ON CONFLICT(name) DO UPDATE SET description=excluded.description", values: [name, description])
+    }
     /// Keep recency for assigned values while discarding orphaned catalog entries,
     /// including entries left behind by earlier app versions or cancelled editors.
     func pruneUnusedSuggestions() throws {
