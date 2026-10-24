@@ -24,8 +24,8 @@ final class SQLiteRepository: InventoryRepository {
         try execute("CREATE TABLE IF NOT EXISTS field_values (field TEXT NOT NULL, name TEXT NOT NULL COLLATE NOCASE, last_used INTEGER NOT NULL, PRIMARY KEY(field, name))")
         // Older payloads decode their Type into labels; seed the persistent catalog once.
         for part in try loadParts() {
-            for (field, value) in [(RecentField.manufacturer, part.manufacturer), (.package, part.package)] {
-                let name = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            for field in RecentField.allCases {
+                let name = field.value(in: part).trimmingCharacters(in: .whitespacesAndNewlines)
                 if !name.isEmpty {
                     try execute("INSERT OR IGNORE INTO field_values VALUES (?, ?, 0)", values: [field.rawValue, name])
                 }
@@ -74,7 +74,7 @@ final class SQLiteRepository: InventoryRepository {
             try execute("DELETE FROM labels WHERE name=?", values: [label])
         }
         for field in RecentField.allCases {
-            let assigned = parts.map { field == .manufacturer ? $0.manufacturer : $0.package }
+            let assigned = parts.map { field.value(in: $0) }
             for value in try loadSuggestions(for: field) where !assigned.contains(where: { $0.caseInsensitiveCompare(value) == .orderedSame }) {
                 try execute("DELETE FROM field_values WHERE field=? AND name=?", values: [field.rawValue, value])
             }

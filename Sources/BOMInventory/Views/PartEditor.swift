@@ -43,7 +43,10 @@ struct PartEditor: View {
                             Text("Choose a preset or enter a custom tolerance.").font(.system(size: 10)).foregroundStyle(Theme.muted)
                         }
                     }
-                    TextField("Storage", text: $part.storage)
+                    LabeledContent("Storage") {
+                        SuggestionField(text: $part.storage, placeholder: "", suggestions: store.storageLocations, filterOnTyping: true, choose: { part.storage = $0 }, submit: {}).accessibilityLabel("Storage")
+                            .help("Choose a recent storage location or type a new one.")
+                    }
                     TextField("On-hand stock", value: $part.stock, format: .number)
                     LabeledContent("Datasheet") { DatasheetEditor(value: $part.datasheet, downloading: $downloadingDatasheet, draft: attachmentDraft) }
                     LabeledContent("Barcode") { Text(part.barcode).font(.system(size: 10, design: .monospaced)).textSelection(.enabled) }

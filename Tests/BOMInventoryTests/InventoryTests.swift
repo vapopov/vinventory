@@ -168,6 +168,39 @@ final class InventoryTests: XCTestCase {
         XCTAssertEqual(try repository.loadSuggestions(for: .package), ["0603"])
         XCTAssertEqual(try repository.loadLabels(), ["Passive"])
     }
+    @MainActor func testStorageRecencySharedAssignmentsAndCleanup() throws {
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let repository = try SQLiteRepository(path: path)
+        let store = InventoryStore(repository: repository)
+        var saved: [Part] = []
+        for index in 1...12 {
+            var part = Part(); part.number = "P\(index)"; part.storage = "Shelf \(index)"
+            try store.save(part, recordFieldUse: true)
+            saved.append(part)
+        }
+        XCTAssertEqual(Array(store.storageLocations.prefix(10)), (3...12).reversed().map { "Shelf \($0)" })
+        var shared = Part(); shared.number = "Shared"; shared.storage = " shelf 1 "
+        try store.save(shared, recordFieldUse: true)
+        XCTAssertEqual(store.storageLocations.first, "Shelf 1")
+        XCTAssertEqual(store.storageLocations.count, 12)
+        XCTAssertEqual(store.parts.first(where: { $0.id == shared.id })?.storage, "Shelf 1")
+        var renamed = saved[0]; renamed.storage = "Drawer A"
+        try store.save(renamed, recordFieldUse: true)
+        XCTAssertTrue(store.storageLocations.contains("Shelf 1"), "Shared locations must remain until their last assignment is removed")
+        shared.storage = ""
+        try store.save(shared, recordFieldUse: true)
+        XCTAssertFalse(store.storageLocations.contains("Shelf 1"))
+        let ordering = store.storageLocations
+        var stockUpdate = saved[1]; stockUpdate.stock = 5
+        try store.save(stockUpdate)
+        XCTAssertEqual(store.storageLocations, ordering)
+        try store.delete(renamed)
+        XCTAssertFalse(store.storageLocations.contains("Drawer A"))
+        let reopened = InventoryStore(repository: try SQLiteRepository(path: path))
+        XCTAssertEqual(reopened.storageLocations, ordering.filter { $0 != "Drawer A" })
+        XCTAssertFalse(try repository.loadSuggestions(for: .storage).contains("Shelf 1"))
+    }
     func testLegacyTypeMigration() throws {
         let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
         defer { try? FileManager.default.removeItem(atPath: path) }
@@ -186,6 +219,7 @@ final class InventoryTests: XCTestCase {
         XCTAssertEqual(try repository.loadLabels(), ["Inductor"])
         XCTAssertEqual(try repository.loadSuggestions(for: .manufacturer), ["Murata"])
         XCTAssertEqual(try repository.loadSuggestions(for: .package), ["SMD"])
+        XCTAssertEqual(try repository.loadSuggestions(for: .storage), ["A1"])
         try repository.save(part)
         XCTAssertEqual(try repository.loadParts().first, part)
         let payload = String(decoding: try JSONEncoder().encode(part), as: UTF8.self)

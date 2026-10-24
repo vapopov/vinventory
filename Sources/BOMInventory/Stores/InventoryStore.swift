@@ -8,6 +8,7 @@ import Observation
     var labels: [String] = []
     var manufacturers: [String] = []
     var packages: [String] = []
+    var storageLocations: [String] = []
     var error: String?
     init(repository: InventoryRepository, attachmentStorage: AttachmentStorage? = nil) {
         self.repository = repository
@@ -28,6 +29,7 @@ import Observation
         labels = try repository.loadLabels()
         manufacturers = try repository.loadSuggestions(for: .manufacturer)
         packages = try repository.loadSuggestions(for: .package)
+        storageLocations = try repository.loadSuggestions(for: .storage)
     }
     // Draft labels stay on the editor's part; only saved assignments enter autocomplete.
     func labelName(for input: String) throws -> String {
@@ -69,6 +71,7 @@ import Observation
         part.tolerance = part.tolerance.trimmingCharacters(in: .whitespacesAndNewlines)
         part.manufacturer = canonical(part.manufacturer, in: manufacturers)
         part.package = canonical(part.package, in: packages)
+        part.storage = canonical(part.storage, in: storageLocations)
         let prepared = try attachmentStorage?.prepare(part)
         part = prepared?.part ?? part
         do { try repository.save(part) }
@@ -80,6 +83,9 @@ import Observation
         }
         if !part.package.isEmpty && (recordFieldUse || previous?.package != part.package) {
             try repository.registerSuggestion(part.package, for: .package)
+        }
+        if !part.storage.isEmpty && (recordFieldUse || previous?.storage != part.storage) {
+            try repository.registerSuggestion(part.storage, for: .storage)
         }
         // Editor saves record label use; stock-only changes preserve recency.
         for label in canonicalLabels where recordFieldUse || !labels.contains(label) { try repository.registerLabel(label) }
