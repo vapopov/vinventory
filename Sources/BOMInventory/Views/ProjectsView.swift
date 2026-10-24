@@ -82,10 +82,13 @@ struct ProjectsView: View {
     }
     private var projectList: some View {
         VStack(spacing: 0) {
-            HStack { Text("PROJECTS").font(.system(size: 12, weight: .semibold)); Spacer() }.foregroundStyle(Theme.muted).padding(.horizontal, 14).frame(height: 40).background(Theme.raised)
+            HStack(spacing: 10) {
+                Text("PROJECTS").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)
+                Spacer()
             CatalogControls(kind: .project, editable: project != nil, add: { catalogDraft = CatalogDraft() }, edit: {
                 if let item = project { catalogDraft = CatalogDraft(originalName: item.name, name: item.name, description: item.description) }
             }, delete: { deletingCatalog = true })
+            }.padding(.horizontal, 14).frame(height: 40).background(Theme.raised)
             HStack { Text("Name").frame(width: 130, alignment: .leading); Text("Description").frame(maxWidth: .infinity, alignment: .leading) }.foregroundStyle(Theme.muted).padding(.horizontal, 14).frame(height: 32).background(Theme.raised.opacity(0.7))
             ScrollView {
                 LazyVStack(spacing: 1) {

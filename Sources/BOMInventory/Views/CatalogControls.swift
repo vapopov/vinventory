@@ -7,12 +7,18 @@ struct CatalogControls: View {
     var edit: () -> Void
     var delete: () -> Void
     var body: some View {
-        HStack(spacing: 5) {
-            ToolButton(symbol: "plus", title: "Add \(kind.title.lowercased())", action: add)
-            ToolButton(symbol: "pencil", title: "Edit \(kind.title.lowercased())", action: edit).disabled(!editable)
-            ToolButton(symbol: "trash", title: "Delete \(kind.title.lowercased())", action: delete).disabled(!editable)
-            Spacer()
-        }.padding(.horizontal, 10).padding(.vertical, 6).background(Theme.raised)
+        HStack(spacing: 3) {
+            control("plus", title: "Add", action: add)
+            control("pencil", title: "Edit", action: edit).disabled(!editable)
+            control("trash", title: "Delete", action: delete).disabled(!editable)
+        }
+    }
+    private func control(_ symbol: String, title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.yellow).frame(width: 26, height: 26).contentShape(Rectangle())
+        }.buttonStyle(.plain).help("\(title) \(kind.title.lowercased())")
+            .accessibilityLabel("\(title) \(kind.title.lowercased())")
     }
 }
 struct CatalogRow: View {
