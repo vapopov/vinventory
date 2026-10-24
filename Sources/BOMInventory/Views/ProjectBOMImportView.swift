@@ -26,8 +26,8 @@ struct ProjectBOMImportView: View {
             Text("Confirm one candidate per CSV row. Unchecked rows and stock shortages go to Requested. Existing designator groups are replaced on Apply.")
                 .font(.system(size: 12)).foregroundStyle(Theme.muted)
             HStack {
-                Button("Matched (\(matched.count))") { tab = 0 }.buttonStyle(ProjectBOMActionStyle())
-                Button("Request (\(requested.count))") { tab = 1 }.buttonStyle(ProjectBOMActionStyle())
+                Button("Matched (\(matched.count))") { tab = 0 }.buttonStyle(ProjectBOMTabStyle(selected: tab == 0))
+                Button("Request (\(requested.count))") { tab = 1 }.buttonStyle(ProjectBOMTabStyle(selected: tab == 1))
                 Spacer()
                 Text("\(document.rows.filter { $0.selectedPartID != nil }.count) confirmed").foregroundStyle(Theme.muted)
             }.buttonStyle(.plain)
@@ -112,5 +112,18 @@ struct ProjectBOMActionStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.font(.system(size: 12, weight: .semibold)).foregroundStyle(.black).padding(.horizontal, 18).padding(.vertical, 8)
             .background(Theme.yellow.opacity(configuration.isPressed ? 0.7 : 1), in: RoundedRectangle(cornerRadius: 3))
+    }
+}
+
+struct ProjectBOMTabStyle: ButtonStyle {
+    var selected: Bool
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(selected ? Color.black : Color.white)
+            .padding(.horizontal, 18).padding(.vertical, 8)
+            .background(selected ? Theme.yellow.opacity(configuration.isPressed ? 0.7 : 1) : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 3))
+            .contentShape(Rectangle())
     }
 }
