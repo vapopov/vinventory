@@ -6,6 +6,7 @@ import Observation
     var parts: [Part] = []
     var allocations: [Allocation] = []
     var projects: [Project] = []
+    var projectBOMEntries: [ProjectBOMEntry] = []
     var labels: [String] = []
     var manufacturers: [String] = []
     var packages: [String] = []
@@ -28,6 +29,7 @@ import Observation
             }
         }
         allocations = try repository.loadAllocations()
+        projectBOMEntries = try repository.loadProjectBOMEntries()
         projects = try repository.loadProjects().sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         labels = try repository.loadLabels()
         manufacturers = try repository.loadSuggestions(for: .manufacturer)
@@ -201,6 +203,10 @@ import Observation
             }
         }
         try repository.saveImportedParts(changed.sorted().map { working[$0] })
+        try reload()
+    }
+    func saveProjectBOMResult(entries: [ProjectBOMEntry], allocations: [Allocation], removing: [String], removingEntries: [String]) throws {
+        try repository.saveProjectBOM(entries: entries, allocations: allocations, removing: removing, removingEntries: removingEntries)
         try reload()
     }
     func allocateBulk(projectName: String, drafts: [Allocation]) throws {

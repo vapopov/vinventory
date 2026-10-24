@@ -220,7 +220,7 @@ struct PartTableRow: Identifiable, Equatable {
     var allocation: Allocation? = nil
     var number: Int? = nil
 }
-private final class InventoryRowView: NSTableRowView {
+final class InventoryRowView: NSTableRowView {
     override var interiorBackgroundStyle: NSView.BackgroundStyle { .emphasized }
     override func drawBackground(in dirtyRect: NSRect) {
         NSColor(Theme.row).setFill(); bounds.fill()

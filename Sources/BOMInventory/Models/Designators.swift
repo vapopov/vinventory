@@ -3,8 +3,12 @@ import Foundation
 /// Counts unique component references, including inclusive ranges such as C16-C20.
 enum Designators {
     static func quantity(in text: String) throws -> Int? {
+        let result = try references(in: text)
+        return result.isEmpty ? nil : result.count
+    }
+    static func references(in text: String) throws -> Set<String> {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return nil }
+        guard !text.isEmpty else { return [] }
         var references = Set<String>()
         let pattern = #"^([A-Za-z]+)([0-9]+)(?:\s*-\s*([A-Za-z]+)?([0-9]+))?$"#
         let regex = try NSRegularExpression(pattern: pattern)
@@ -22,6 +26,6 @@ enum Designators {
                   last >= first, last - first < 100_000 else { throw InventoryError.message("Use an ascending range with the same prefix, such as C16-C20.") }
             for number in first...last { references.insert("\(prefix)\(number)") }
         }
-        return references.count
+        return references
     }
 }

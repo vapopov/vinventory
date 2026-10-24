@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 
 struct ProjectsView: View {
     @Environment(\.inventoryNavigation) private var navigation
@@ -8,6 +10,8 @@ struct ProjectsView: View {
     @Binding var partSelection: String?
     var editPart: (Part) -> Void
     var showPart: (Part) -> Void
+    @State private var bomImport: ProjectBOMImport?
+    @State private var requestedTab = false
     @State private var bulkAdding = false
     @State private var bulkDrafts: [String: Allocation] = [:]
     @State private var allocationSelection: String?
@@ -50,7 +54,15 @@ struct ProjectsView: View {
                         Button(action: toggleBulkAdding) {
                             Image(systemName: bulkAdding ? "checkmark" : "plus.square.on.square").font(.system(size: 12, weight: .semibold)).frame(width: 26, height: 26)
                         }.buttonStyle(.plain).foregroundStyle(Theme.yellow).help(bulkAdding ? "Apply bulk allocations" : "Bulk add parts")
-                            .accessibilityLabel(bulkAdding ? "Apply bulk allocations" : "Bulk add parts")
+                            .accessibilityLabel(bulkAdding ? "Apply bulk allocations" : "Bulk add parts").disabled(bomImport != nil || requestedTab)
+                        Button(action: chooseProjectBOM) { Image(systemName: "arrow.down.to.line").font(.system(size: 12, weight: .semibold)).frame(width: 26, height: 26) }
+                            .buttonStyle(.plain).foregroundStyle(Theme.yellow).help("Import project BOM").accessibilityLabel("Import project BOM").disabled(bulkAdding || bomImport != nil)
+                        Button("Allocated") { requestedTab = false }.buttonStyle(.plain).foregroundStyle(requestedTab ? Theme.yellow : .white).disabled(bomImport != nil || bulkAdding)
+                        Button("Requested") { requestedTab = true }.buttonStyle(.plain).foregroundStyle(requestedTab ? .white : Theme.yellow).disabled(bomImport != nil || bulkAdding)
+                        if requestedTab && bomImport == nil {
+                            Button(action: exportRequested) { Image(systemName: "arrow.up.to.line").frame(width: 26, height: 26) }
+                                .buttonStyle(.plain).foregroundStyle(Theme.yellow).help("Export requested BOM as CSV").accessibilityLabel("Export requested BOM")
+                        }
                         if bulkAdding {
                             Button { cancelBulkAdding() } label: { Image(systemName: "xmark").frame(width: 26, height: 26) }
                                 .buttonStyle(.plain).foregroundStyle(Theme.yellow).help("Cancel bulk adding").accessibilityLabel("Cancel bulk adding")
@@ -59,6 +71,11 @@ struct ProjectsView: View {
                         Spacer()
                         Text("\((bulkAdding ? Array(bulkDrafts.values) : matching).reduce(0) { $0 + $1.quantity }.formatted()) units").font(.system(size: 12)).foregroundStyle(Theme.muted)
                     }.padding(.horizontal, 14).frame(height: 40).background(Theme.raised)
+                    if let review = bomImport {
+                        ProjectBOMImportView(document: review, project: project.name, store: store, finish: { bomImport = nil }, editPart: editPart, showPart: showPart).id(review.id)
+                    } else if requestedTab {
+                        ProjectRequestsView(store: store, project: project.name, query: query)
+                    } else {
                     PartsTable(parts: store.parts, selection: rowSelection, allocations: Array(displayed.dropFirst(page * pageSize).prefix(pageSize)), rowNumberOffset: page * pageSize, draftMode: bulkAdding, saveDesignators: { allocation, value in
                         if bulkAdding { try updateBulkDraft(allocation, designators: value) }
                         else { try store.saveDesignators(allocationID: allocation.id, value: value) }
@@ -77,6 +94,7 @@ struct ProjectsView: View {
                         }
                     }
                     PaginationBar(count: displayed.count, page: $page, pageSize: $pageSize, unit: bulkAdding ? "part" : "allocation")
+                    }
                 } else {
                     EmptyState(title: "Select a project", subtitle: "Add a project or allocate stock from PARTS.")
                 }
@@ -96,13 +114,29 @@ struct ProjectsView: View {
         } message: { Text("All allocations in this project will be released back to available stock.") }
         .onAppear { reconcileSelection() }
         .onChange(of: store.projects.map(\.id)) { _, _ in reconcileSelection() }
-        .onChange(of: projectSelection) { _, _ in page = 0; allocationSelection = nil; partSelection = nil; cancelBulkAdding() }
+        .onChange(of: projectSelection) { _, _ in page = 0; allocationSelection = nil; partSelection = nil; cancelBulkAdding(); bomImport = nil; requestedTab = false }
         .onChange(of: query) { _, _ in page = 0 }
         .onChange(of: pageSize) { _, _ in page = 0 }
         .onChange(of: displayed.map(\.id)) { _, ids in
             page = min(page, pages - 1)
             if let allocationSelection, !ids.contains(allocationSelection) { self.allocationSelection = nil; partSelection = nil }
         }
+    }
+    private func chooseProjectBOM() {
+        guard let project else { return }
+        let panel = NSOpenPanel(); panel.allowedContentTypes = [.commaSeparatedText, .plainText]; panel.allowsMultipleSelection = false; panel.prompt = "Review project BOM"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let data = try Data(contentsOf: url)
+            guard let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .utf16) else { throw InventoryError.message("Use a UTF-8 or UTF-16 CSV file.") }
+            bomImport = try ProjectBOMImport(text: text, filename: url.lastPathComponent, parts: store.parts, previous: store.bomEntries(for: project.name))
+        } catch { store.error = error.localizedDescription }
+    }
+    private func exportRequested() {
+        guard let project else { return }
+        let panel = NSSavePanel(); panel.allowedContentTypes = [.commaSeparatedText]; panel.nameFieldStringValue = project.name + "-requested.csv"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        store.perform { try store.requestedCSV(project: project.name).write(to: url, atomically: true, encoding: .utf8) }
     }
     private func cancelBulkAdding() {
         bulkAdding = false; bulkDrafts = [:]; page = 0; allocationSelection = nil
