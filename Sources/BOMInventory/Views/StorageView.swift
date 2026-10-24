@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct StorageView: View {
+    @Environment(\.inventoryNavigation) private var navigation
     var store: InventoryStore
     var parts: [Part]
     @Binding var locationSelection: String?
@@ -27,7 +28,7 @@ struct StorageView: View {
                         }
                     }.padding(.horizontal, 14).frame(height: 40).background(Theme.raised)
                     PartsTable(parts: Array(assigned.dropFirst(page * pageSize).prefix(pageSize)), selection: $partSelection, preview: { part, dismiss in
-                        AnyView(PartPreview(store: store, partID: part.id, dismiss: { dismiss() }, editPart: editPart, showPart: showPart))
+                        AnyView(PartPreview(store: store, partID: part.id, dismiss: { dismiss() }, editPart: editPart, showPart: showPart).environment(\.inventoryNavigation, navigation))
                     })
                         .overlay {
                             if assigned.isEmpty { EmptyState(title: "No matching parts", subtitle: "No parts in this location match the current search.").allowsHitTesting(false) }

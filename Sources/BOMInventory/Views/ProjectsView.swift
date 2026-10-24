@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ProjectsView: View {
+    @Environment(\.inventoryNavigation) private var navigation
     var store: InventoryStore
     var query: String
     @Binding var projectSelection: String?
@@ -42,7 +43,7 @@ struct ProjectsView: View {
                     }, releaseAllocation: { allocation in
                         store.perform { try store.release(allocation) }
                     }, preview: { part, dismiss in
-                        AnyView(PartPreview(store: store, partID: part.id, dismiss: { dismiss() }, editPart: editPart, showPart: showPart))
+                        AnyView(PartPreview(store: store, partID: part.id, dismiss: { dismiss() }, editPart: editPart, showPart: showPart).environment(\.inventoryNavigation, navigation))
                     })
                     .overlay {
                         if matching.isEmpty {

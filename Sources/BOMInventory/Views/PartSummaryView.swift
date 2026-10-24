@@ -3,10 +3,12 @@ import AppKit
 
 /// Shared part details for the PARTS inspector and the reusable Part Preview popup.
 struct PartSummaryView: View {
+    @Environment(\.inventoryNavigation) private var navigation
     var part: Part
     var available: Int
     var allocated: Int
     var edit: () -> Void
+    var beforeNavigate: () -> Void = {}
     @State private var barcode = false
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -27,7 +29,7 @@ struct PartSummaryView: View {
                 Button("Datasheet") { if let url = try? DatasheetReference.url(for: part.datasheet) { NSWorkspace.shared.open(url) } }.buttonStyle(.plain).foregroundStyle(Theme.yellow).padding(9).background(Theme.raised).disabled(part.datasheet.isEmpty).help(part.datasheet.hasPrefix("/") ? "Open local PDF" : "Open datasheet in browser")
             }
             HStack(spacing: 8) { metric("On-hand", part.stock); metric("Available", available, color: Theme.green); metric("Allocated", allocated) }
-            HStack { Image(systemName: "archivebox"); Text(part.storage.isEmpty ? "No storage assigned" : part.storage); Spacer(); Button("Edit details", action: edit).buttonStyle(.plain).foregroundStyle(Theme.yellow) }.font(.system(size: 12)).foregroundStyle(Theme.muted)
+            HStack { Image(systemName: "archivebox"); if part.storage.isEmpty { Text("No storage assigned") } else { DestinationLink(title: part.storage, destination: "storage") { beforeNavigate(); navigation.storage(part.storage) } }; Spacer(); Button("Edit details", action: edit).buttonStyle(.plain).foregroundStyle(Theme.yellow) }.font(.system(size: 12)).foregroundStyle(Theme.muted)
         }.padding(24)
     }
     private func metric(_ title: String, _ value: Int, color: Color = .primary) -> some View {

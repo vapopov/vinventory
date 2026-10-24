@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 struct PartDetailView: View {
+    @Environment(\.inventoryNavigation) private var navigation
     @Bindable var store: InventoryStore
     var part: Part
     var edit: () -> Void
@@ -74,7 +75,7 @@ struct PartDetailView: View {
             let allocations = store.allocations.filter { $0.partID == part.id }
             if allocations.isEmpty { Text("No project allocations").foregroundStyle(Theme.muted).padding(30) }
             ForEach(allocations) { allocation in
-                HStack { VStack(alignment: .leading, spacing: 3) { Text(allocation.project).lineLimit(1); if !allocation.designators.isEmpty { Text(allocation.designators).font(.caption).foregroundStyle(Theme.muted).lineLimit(1) } }; Spacer(); Text(allocation.quantity.formatted()).monospacedDigit(); Button { editingAllocation = allocation } label: { Image(systemName: "pencil") }.buttonStyle(.plain).foregroundStyle(Theme.yellow).help("Edit quantity and designators").accessibilityLabel("Edit allocation for \(allocation.project)").padding(.horizontal, 12); ReleaseAllocationButton(title: allocation.project) { store.perform { try store.release(allocation) } } }.padding(14).background(Theme.panel.opacity(0.6))
+                HStack { VStack(alignment: .leading, spacing: 3) { DestinationLink(title: allocation.project, destination: "project") { navigation.project(allocation.project) }; if !allocation.designators.isEmpty { Text(allocation.designators).font(.caption).foregroundStyle(Theme.muted).lineLimit(1) } }; Spacer(); Text(allocation.quantity.formatted()).monospacedDigit(); Button { editingAllocation = allocation } label: { Image(systemName: "pencil") }.buttonStyle(.plain).foregroundStyle(Theme.yellow).help("Edit quantity and designators").accessibilityLabel("Edit allocation for \(allocation.project)").padding(.horizontal, 12); ReleaseAllocationButton(title: allocation.project) { store.perform { try store.release(allocation) } } }.padding(14).background(Theme.panel.opacity(0.6))
                 Divider()
             }
         }

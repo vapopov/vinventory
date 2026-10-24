@@ -17,10 +17,10 @@ struct PartPreview: View {
             }.padding(.horizontal, 16).frame(height: 34).background(Theme.raised)
             if let part = store.parts.first(where: { $0.id == partID }) {
                 ScrollView {
-                    PartSummaryView(part: part, available: store.available(part), allocated: store.allocated(part)) {
+                    PartSummaryView(part: part, available: store.available(part), allocated: store.allocated(part), edit: {
                         dismiss()
                         editPart(part)
-                    }
+                    }, beforeNavigate: dismiss)
                 }
                 HStack {
                     Spacer()

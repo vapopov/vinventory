@@ -38,6 +38,7 @@ struct ContentView: View {
             }
             HStack { Circle().fill(Theme.green).frame(width: 6, height: 6); Text("LOCAL INVENTORY").font(.system(size: 10, weight: .semibold)); Spacer(); Text("SQLite  •  \(store.parts.count) parts").font(.system(size: 11)) }.foregroundStyle(Theme.muted).padding(.horizontal, 14).frame(height: 26).background(Theme.background)
         }
+        .environment(\.inventoryNavigation, InventoryNavigation(project: navigateToProject, storage: navigateToStorage))
         .font(.system(size: 13)).background(Theme.background)
         .sheet(item: $editor) { part in PartEditor(part: part, store: store) { updated in try store.save(updated, recordFieldUse: true); selection = updated.id } }
         .alert("Delete part?", isPresented: $deleting) { Button("Cancel", role: .cancel) {}; Button("Delete", role: .destructive) { if let selected { store.perform { try store.delete(selected) }; selection = nil } } } message: { Text("The selected part and its project allocations will be permanently removed.") }
@@ -75,6 +76,20 @@ struct ContentView: View {
                 }
             Text("BOM INVENTORY").font(.system(size: 13, weight: .heavy)).foregroundStyle(Theme.background).padding(.horizontal, 14).frame(height: 34).background(Theme.yellow).padding(.leading, 8)
         }.padding(.horizontal, 10).frame(height: 52).background(Theme.background)
+    }
+    private func navigateToProject(_ name: String) {
+        guard let project = store.projects.first(where: { $0.name.caseInsensitiveCompare(name.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame }) else { return }
+        query = ""
+        selection = nil
+        projectSelection = project.id
+        section = .projects
+    }
+    private func navigateToStorage(_ name: String) {
+        guard let location = store.locations.first(where: { $0.name?.caseInsensitiveCompare(name) == .orderedSame }) else { return }
+        query = ""
+        selection = nil
+        storageSelection = location.id
+        section = .storage
     }
     private func navigateToPart(_ part: Part) {
         if !results.contains(where: { $0.id == part.id }) { query = part.barcode }
