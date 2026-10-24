@@ -156,6 +156,20 @@ import Observation
         try repository.saveMergedAllocation(combined, removing: Array(existing.dropFirst()))
         try reload()
     }
+    func allocateBulk(projectName: String, drafts: [Allocation]) throws {
+        guard let project = projects.first(where: { $0.name.caseInsensitiveCompare(projectName) == .orderedSame }) else { throw InventoryError.message("This project no longer exists.") }
+        var seen = Set<String>()
+        var additions: [Allocation] = []
+        for draft in drafts where draft.quantity != 0 || !draft.designators.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            guard let part = parts.first(where: { $0.id == draft.partID }) else { throw InventoryError.message("A selected part no longer exists.") }
+            guard seen.insert(part.id).inserted, !allocations.contains(where: { $0.partID == part.id && project.contains($0) }) else { throw InventoryError.message("\(part.number) is already allocated to this project. Cancel bulk adding and refresh the list.") }
+            guard draft.quantity > 0, draft.quantity <= available(part) else { throw InventoryError.message("\(part.number): enter a positive quantity within available stock (\(available(part))).") }
+            additions.append(Allocation(partID: part.id, project: project.name, quantity: draft.quantity, designators: draft.designators.trimmingCharacters(in: .whitespacesAndNewlines)))
+        }
+        guard !additions.isEmpty else { return }
+        try repository.saveAllocations(additions)
+        try reload()
+    }
     func saveProjectDescription(name: String, description: String) throws {
         guard let project = projects.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) else {
             throw InventoryError.message("This project is no longer available.")

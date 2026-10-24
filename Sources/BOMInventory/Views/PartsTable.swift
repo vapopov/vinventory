@@ -6,6 +6,7 @@ struct PartsTable: NSViewRepresentable {
     @Binding var selection: String?
     var allocations: [Allocation]? = nil
     var rowNumberOffset = 0
+    var draftMode = false
     var saveDesignators: ((Allocation, String) throws -> Void)? = nil
     var saveQuantity: ((Allocation, String) throws -> Void)? = nil
     var releaseAllocation: ((Allocation) -> Void)? = nil
@@ -45,7 +46,7 @@ struct PartsTable: NSViewRepresentable {
         scroll.contentView.postsBoundsChangedNotifications = true
         context.coordinator.observeScrolling(scroll.contentView)
         var columns: [(String, String, CGFloat)] = [("number", "Part Number", 160), ("manufacturer", "Manufacturer", 150), ("description", "Description", 220), ("package", "Package", 90), ("value", "Value", 80), ("tolerance", "Tolerance", 85), ("stock", "Stock Balance", 110), ("storage", "Storage", 120)]
-        if allocations != nil { columns.insert(contentsOf: [("rowNumber", "#", 40), ("designators", "Designators", 180), ("quantity", "Qty", 65), ("release", "", 80)], at: 0) }
+        if allocations != nil { columns.insert(contentsOf: [("rowNumber", "#", 40), ("designators", "Designators", 180), ("quantity", "Qty", 65)] + (draftMode ? [] : [("release", "", 80)]), at: 0) }
         for (key, title, width) in columns {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(key))
             column.title = title; column.width = width; column.minWidth = 55
@@ -160,11 +161,11 @@ struct PartsTable: NSViewRepresentable {
             if let allocation = item.allocation {
                 if key == "designators" {
                     let save = parent.saveDesignators
-                    return hostingCell(InlineTextCell(value: allocation.designators, title: "Designators for \(part.number)", wraps: true, preview: { [weak self] in self?.previewCell(id: item.id) }) { value in try save?(allocation, value) })
+                    return hostingCell(InlineTextCell(value: allocation.designators, title: "Designators for \(part.number)", wraps: true, emptyPlaceholder: parent.draftMode ? "" : "—", preview: { [weak self] in self?.previewCell(id: item.id) }) { value in try save?(allocation, value) })
                 }
                 if key == "quantity" {
                     let save = parent.saveQuantity
-                    return hostingCell(InlineTextCell(value: String(allocation.quantity), title: "Quantity for \(part.number)", preview: { [weak self] in self?.previewCell(id: item.id) }) { value in try save?(allocation, value) })
+                    return hostingCell(InlineTextCell(value: parent.draftMode && allocation.quantity == 0 ? "" : String(allocation.quantity), title: "Quantity for \(part.number)", emptyPlaceholder: parent.draftMode ? "" : "—", preview: { [weak self] in self?.previewCell(id: item.id) }) { value in try save?(allocation, value) })
                 }
                 if key == "release" {
                     let release = parent.releaseAllocation

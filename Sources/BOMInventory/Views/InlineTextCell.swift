@@ -5,6 +5,7 @@ struct InlineTextCell: View {
     var value: String
     var title: String
     var wraps = false
+    var emptyPlaceholder = "—"
     var preview: (() -> Void)? = nil
     var save: (String) throws -> Void
     @State private var hovering = false
@@ -41,7 +42,7 @@ struct InlineTextCell: View {
             .alert("Could not save \(title)", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) { Button("OK") { error = nil } } message: { Text(error ?? "") }
     }
     private var displayText: some View {
-        Text(value.isEmpty ? "—" : value).lineLimit(wraps ? nil : 1)
+        Text(value.isEmpty ? emptyPlaceholder : value).lineLimit(wraps ? nil : 1)
             .fixedSize(horizontal: false, vertical: wraps).multilineTextAlignment(.leading)
             .help(value).frame(maxWidth: .infinity, alignment: .leading)
     }

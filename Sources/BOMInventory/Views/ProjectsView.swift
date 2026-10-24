@@ -8,6 +8,8 @@ struct ProjectsView: View {
     @Binding var partSelection: String?
     var editPart: (Part) -> Void
     var showPart: (Part) -> Void
+    @State private var bulkAdding = false
+    @State private var bulkDrafts: [String: Allocation] = [:]
     @State private var allocationSelection: String?
     @State private var catalogDraft: CatalogDraft?
     @State private var deletingCatalog = false
@@ -21,11 +23,21 @@ struct ProjectsView: View {
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
         return store.allocations.filter { project.contains($0) && (matches.contains($0.partID) || (!text.isEmpty && $0.designators.localizedCaseInsensitiveContains(text))) }
     }
-    private var pages: Int { max(1, (matching.count + pageSize - 1) / pageSize) }
+    private var displayed: [Allocation] {
+        guard bulkAdding, let project else { return matching }
+        let assigned = Set(store.allocations.filter(project.contains).map(\.partID))
+        let search = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let matches = Set(store.search(query).map(\.id))
+        return store.parts.filter { !assigned.contains($0.id) && (matches.contains($0.id) || (!search.isEmpty && bulkDrafts[$0.id]?.designators.localizedCaseInsensitiveContains(search) == true)) }
+            .sorted { $0.number.localizedStandardCompare($1.number) == .orderedAscending }
+            .map { bulkDrafts[$0.id] ?? Allocation(id: $0.id, partID: $0.id, project: project.name, quantity: 0) }
+    }
+    private var pendingCount: Int { bulkDrafts.values.filter { $0.quantity != 0 || !$0.designators.isEmpty }.count }
+    private var pages: Int { max(1, (displayed.count + pageSize - 1) / pageSize) }
     private var rowSelection: Binding<String?> {
         Binding(get: { allocationSelection }, set: { id in
             allocationSelection = id
-            partSelection = store.allocations.first { $0.id == id }?.partID
+            partSelection = (bulkAdding ? displayed : store.allocations).first { $0.id == id }?.partID
         })
     }
     var body: some View {
@@ -35,24 +47,36 @@ struct ProjectsView: View {
                 if let project {
                     HStack {
                         Text("ALLOCATIONS IN \(project.name.uppercased())").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)
+                        Button(action: toggleBulkAdding) {
+                            Image(systemName: bulkAdding ? "checkmark" : "plus.square.on.square").font(.system(size: 12, weight: .semibold)).frame(width: 26, height: 26)
+                        }.buttonStyle(.plain).foregroundStyle(Theme.yellow).help(bulkAdding ? "Apply bulk allocations" : "Bulk add parts")
+                            .accessibilityLabel(bulkAdding ? "Apply bulk allocations" : "Bulk add parts")
+                        if bulkAdding {
+                            Button { cancelBulkAdding() } label: { Image(systemName: "xmark").frame(width: 26, height: 26) }
+                                .buttonStyle(.plain).foregroundStyle(Theme.yellow).help("Cancel bulk adding").accessibilityLabel("Cancel bulk adding")
+                            Text("\(pendingCount) pending").font(.caption).foregroundStyle(Theme.muted)
+                        }
                         Spacer()
-                        Text("\(matching.reduce(0) { $0 + $1.quantity }.formatted()) units").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        Text("\((bulkAdding ? Array(bulkDrafts.values) : matching).reduce(0) { $0 + $1.quantity }.formatted()) units").font(.system(size: 12)).foregroundStyle(Theme.muted)
                     }.padding(.horizontal, 14).frame(height: 40).background(Theme.raised)
-                    PartsTable(parts: store.parts, selection: rowSelection, allocations: Array(matching.dropFirst(page * pageSize).prefix(pageSize)), rowNumberOffset: page * pageSize, saveDesignators: { allocation, value in
-                        try store.saveDesignators(allocationID: allocation.id, value: value)
+                    PartsTable(parts: store.parts, selection: rowSelection, allocations: Array(displayed.dropFirst(page * pageSize).prefix(pageSize)), rowNumberOffset: page * pageSize, draftMode: bulkAdding, saveDesignators: { allocation, value in
+                        if bulkAdding { try updateBulkDraft(allocation, designators: value) }
+                        else { try store.saveDesignators(allocationID: allocation.id, value: value) }
                     }, saveQuantity: { allocation, value in
-                        try store.saveQuantity(allocationID: allocation.id, value: value)
+                        if bulkAdding { try updateBulkDraft(allocation, quantity: value) }
+                        else { try store.saveQuantity(allocationID: allocation.id, value: value) }
                     }, releaseAllocation: { allocation in
                         store.perform { try store.release(allocation) }
                     }, preview: { part, dismiss in
                         AnyView(PartPreview(store: store, partID: part.id, dismiss: { dismiss() }, editPart: editPart, showPart: showPart).environment(\.inventoryNavigation, navigation))
                     })
+                    .id(bulkAdding)
                     .overlay {
-                        if matching.isEmpty {
-                            EmptyState(title: "No allocated parts", subtitle: query.isEmpty ? "Allocate parts to this project from PARTS." : "No allocations match this search.").allowsHitTesting(false)
+                        if displayed.isEmpty {
+                            EmptyState(title: bulkAdding ? "No unallocated parts" : "No allocated parts", subtitle: query.isEmpty ? (bulkAdding ? "All parts are already allocated to this project." : "Use bulk add or allocate parts from PARTS.") : "No parts match this search.").allowsHitTesting(false)
                         }
                     }
-                    PaginationBar(count: matching.count, page: $page, pageSize: $pageSize, unit: "allocation")
+                    PaginationBar(count: displayed.count, page: $page, pageSize: $pageSize, unit: bulkAdding ? "part" : "allocation")
                 } else {
                     EmptyState(title: "Select a project", subtitle: "Add a project or allocate stock from PARTS.")
                 }
@@ -72,13 +96,42 @@ struct ProjectsView: View {
         } message: { Text("All allocations in this project will be released back to available stock.") }
         .onAppear { reconcileSelection() }
         .onChange(of: store.projects.map(\.id)) { _, _ in reconcileSelection() }
-        .onChange(of: projectSelection) { _, _ in page = 0; allocationSelection = nil; partSelection = nil }
+        .onChange(of: projectSelection) { _, _ in page = 0; allocationSelection = nil; partSelection = nil; cancelBulkAdding() }
         .onChange(of: query) { _, _ in page = 0 }
         .onChange(of: pageSize) { _, _ in page = 0 }
-        .onChange(of: matching.map(\.id)) { _, ids in
+        .onChange(of: displayed.map(\.id)) { _, ids in
             page = min(page, pages - 1)
             if let allocationSelection, !ids.contains(allocationSelection) { self.allocationSelection = nil; partSelection = nil }
         }
+    }
+    private func cancelBulkAdding() {
+        bulkAdding = false; bulkDrafts = [:]; page = 0; allocationSelection = nil
+    }
+    private func toggleBulkAdding() {
+        if bulkAdding {
+            guard let project else { return }
+            do {
+                try store.allocateBulk(projectName: project.name, drafts: bulkDrafts.values.sorted { $0.partID < $1.partID })
+                cancelBulkAdding()
+            } catch { store.error = error.localizedDescription }
+        } else {
+            bulkDrafts = [:]; bulkAdding = true; page = 0; allocationSelection = nil; partSelection = nil
+        }
+    }
+    private func updateBulkDraft(_ row: Allocation, quantity: String? = nil, designators: String? = nil) throws {
+        var draft = bulkDrafts[row.partID] ?? row
+        if let quantity {
+            if quantity.isEmpty { draft.quantity = 0 }
+            else {
+                guard let count = Int(quantity), count > 0 else { throw InventoryError.message("Enter a positive whole-number quantity.") }
+                draft.quantity = count
+            }
+        }
+        if let designators {
+            draft.designators = designators.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let count = try Designators.quantity(in: draft.designators) { draft.quantity = count }
+        }
+        bulkDrafts[row.partID] = draft
     }
     private var projectList: some View {
         VStack(spacing: 0) {

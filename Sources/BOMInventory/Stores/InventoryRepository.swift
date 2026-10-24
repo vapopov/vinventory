@@ -18,6 +18,7 @@ protocol InventoryRepository {
     func delete(_ part: Part) throws
     func save(_ allocation: Allocation) throws
     func saveMergedAllocation(_ allocation: Allocation, removing duplicates: [Allocation]) throws
+    func saveAllocations(_ allocations: [Allocation]) throws
     func delete(_ allocation: Allocation) throws
 }
 final class SQLiteRepository: InventoryRepository {
@@ -207,10 +208,16 @@ final class SQLiteRepository: InventoryRepository {
     }
     func saveMergedAllocation(_ allocation: Allocation, removing duplicates: [Allocation]) throws {
         try transaction {
-            try ensureProject(allocation.project)
-            try execute("INSERT INTO allocations VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET part_id=excluded.part_id,payload=excluded.payload", values: [allocation.id, allocation.partID, try json(allocation)])
+            try writeAllocation(allocation)
             for duplicate in duplicates where duplicate.id != allocation.id { try delete(duplicate) }
         }
+    }
+    func saveAllocations(_ allocations: [Allocation]) throws {
+        try transaction { for allocation in allocations { try writeAllocation(allocation) } }
+    }
+    private func writeAllocation(_ allocation: Allocation) throws {
+        try ensureProject(allocation.project)
+        try execute("INSERT INTO allocations VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET part_id=excluded.part_id,payload=excluded.payload", values: [allocation.id, allocation.partID, try json(allocation)])
     }
     func delete(_ allocation: Allocation) throws { try execute("DELETE FROM allocations WHERE id=?", values: [allocation.id]) }
 }
