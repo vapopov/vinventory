@@ -9,6 +9,8 @@ struct ProjectsView: View {
     var editPart: (Part) -> Void
     var showPart: (Part) -> Void
     @State private var allocationSelection: String?
+    @State private var catalogDraft: CatalogDraft?
+    @State private var deletingCatalog = false
     @State private var page = 0
     @State private var pageSize = 25
     @FocusState private var projectsFocused: Bool
@@ -52,10 +54,22 @@ struct ProjectsView: View {
                     }
                     PaginationBar(count: matching.count, page: $page, pageSize: $pageSize, unit: "allocation")
                 } else {
-                    EmptyState(title: "Select a project", subtitle: "Create a project by allocating stock to it from PARTS.")
+                    EmptyState(title: "Select a project", subtitle: "Add a project or allocate stock from PARTS.")
                 }
             }.frame(minWidth: 710, maxHeight: .infinity).background(Theme.row)
         }
+        .sheet(item: $catalogDraft) { draft in
+            CatalogEditor(kind: .project, draft: draft) { name, description in
+                let saved = try store.saveCatalog(kind: .project, originalName: draft.originalName, name: name, description: description)
+                projectSelection = saved
+            }
+        }
+        .alert("Delete project?", isPresented: $deletingCatalog) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                if let name = project?.name { store.perform { try store.deleteCatalog(kind: .project, name: name) } }
+            }
+        } message: { Text("All allocations in this project will be released back to available stock.") }
         .onAppear { reconcileSelection() }
         .onChange(of: store.projects.map(\.id)) { _, _ in reconcileSelection() }
         .onChange(of: projectSelection) { _, _ in page = 0; allocationSelection = nil; partSelection = nil }
@@ -69,13 +83,14 @@ struct ProjectsView: View {
     private var projectList: some View {
         VStack(spacing: 0) {
             HStack { Text("PROJECTS").font(.system(size: 12, weight: .semibold)); Spacer() }.foregroundStyle(Theme.muted).padding(.horizontal, 14).frame(height: 40).background(Theme.raised)
+            CatalogControls(kind: .project, editable: project != nil, add: { catalogDraft = CatalogDraft() }, edit: {
+                if let item = project { catalogDraft = CatalogDraft(originalName: item.name, name: item.name, description: item.description) }
+            }, delete: { deletingCatalog = true })
             HStack { Text("Name").frame(width: 130, alignment: .leading); Text("Description").frame(maxWidth: .infinity, alignment: .leading) }.foregroundStyle(Theme.muted).padding(.horizontal, 14).frame(height: 32).background(Theme.raised.opacity(0.7))
             ScrollView {
                 LazyVStack(spacing: 1) {
                     ForEach(store.projects) { project in
-                        DescriptionRow(name: project.name, description: project.description, selected: projectSelection == project.id, kind: "project", select: { projectSelection = project.id }) { description in
-                            try store.saveProjectDescription(name: project.name, description: description)
-                        }
+                        CatalogRow(name: project.name, description: project.description, selected: projectSelection == project.id, select: { projectSelection = project.id })
                     }
                 }
             }.focusable().focused($projectsFocused).onMoveCommand { direction in

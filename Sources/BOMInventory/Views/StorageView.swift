@@ -8,6 +8,8 @@ struct StorageView: View {
     @Binding var partSelection: String?
     var editPart: (Part) -> Void
     var showPart: (Part) -> Void
+    @State private var catalogDraft: CatalogDraft?
+    @State private var deletingCatalog = false
     @State private var page = 0
     @State private var pageSize = 25
     @FocusState private var locationsFocused: Bool
@@ -35,10 +37,22 @@ struct StorageView: View {
                         }
                     PaginationBar(count: assigned.count, page: $page, pageSize: $pageSize)
                 } else {
-                    EmptyState(title: "Select a storage location", subtitle: "Assign storage to a part to see it here.")
+                    EmptyState(title: "Select a storage location", subtitle: "Add a storage location or select (no storage).")
                 }
             }.frame(minWidth: 710, maxHeight: .infinity).background(Theme.row)
         }
+        .sheet(item: $catalogDraft) { draft in
+            CatalogEditor(kind: .storage, draft: draft) { name, description in
+                let saved = try store.saveCatalog(kind: .storage, originalName: draft.originalName, name: name, description: description)
+                locationSelection = StorageLocation(name: saved, description: description).id
+            }
+        }
+        .alert("Delete storage?", isPresented: $deletingCatalog) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                if let name = location?.name { store.perform { try store.deleteCatalog(kind: .storage, name: name) } }
+            }
+        } message: { Text("Parts in this storage location will move to (no storage).") }
         .onAppear { reconcileSelection() }
         .onChange(of: locations.map(\.id)) { _, _ in reconcileSelection() }
         .onChange(of: locationSelection) { _, _ in
@@ -54,13 +68,14 @@ struct StorageView: View {
     private var locationList: some View {
         VStack(spacing: 0) {
             HStack { Text("LOCATIONS").font(.system(size: 12, weight: .semibold)); Spacer() }.foregroundStyle(Theme.muted).padding(.horizontal, 14).frame(height: 40).background(Theme.raised)
+            CatalogControls(kind: .storage, editable: location?.name != nil, add: { catalogDraft = CatalogDraft() }, edit: {
+                if let item = location, let name = item.name { catalogDraft = CatalogDraft(originalName: name, name: name, description: item.description) }
+            }, delete: { deletingCatalog = true })
             HStack { Text("Name").frame(width: 130, alignment: .leading); Text("Description").frame(maxWidth: .infinity, alignment: .leading) }.foregroundStyle(Theme.muted).padding(.horizontal, 14).frame(height: 32).background(Theme.raised.opacity(0.7))
             ScrollView {
                 LazyVStack(spacing: 1) {
                     ForEach(locations) { item in
-                        StorageLocationRow(location: item, selected: locationSelection == item.id, select: { locationSelection = item.id }) { description in
-                            if let name = item.name { try store.saveStorageDescription(name: name, description: description) }
-                        }
+                        CatalogRow(name: item.displayName, description: item.description, selected: locationSelection == item.id, select: { locationSelection = item.id })
                     }
                 }
             }.focusable().focused($locationsFocused).onMoveCommand { direction in

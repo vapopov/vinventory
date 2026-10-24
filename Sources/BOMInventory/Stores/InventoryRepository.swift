@@ -1,6 +1,8 @@
 import Foundation
 import CSQLite
 protocol InventoryRepository {
+    func saveCatalog(kind: CatalogKind, originalName: String?, name: String, description: String) throws
+    func deleteCatalog(kind: CatalogKind, name: String) throws
     func loadProjects() throws -> [Project]
     func saveProjectDescription(name: String, description: String) throws
     func loadStorageDescriptions() throws -> [String: String]
@@ -41,8 +43,11 @@ final class SQLiteRepository: InventoryRepository {
                 try execute("INSERT OR IGNORE INTO labels VALUES (?, 0)", values: [label])
             }
         }
+        for part in try loadParts() where !part.storage.isEmpty {
+            try execute("INSERT OR IGNORE INTO storage_descriptions VALUES (?, '')", values: [part.storage])
+        }
         try pruneUnusedSuggestions()
-        try execute("PRAGMA user_version = 5")
+        try execute("PRAGMA user_version = 6")
     }
     deinit { sqlite3_close(db) }
     private func execute(_ sql: String, values: [String] = []) throws {
@@ -150,7 +155,51 @@ final class SQLiteRepository: InventoryRepository {
     }
     func loadParts() throws -> [Part] { try load("parts") }
     func loadAllocations() throws -> [Allocation] { try load("allocations") }
-    func save(_ part: Part) throws { try execute("INSERT INTO parts VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET barcode=excluded.barcode,payload=excluded.payload", values: [part.id, part.barcode, try json(part)]) }
+    func save(_ part: Part) throws {
+        if !part.storage.isEmpty { try execute("INSERT OR IGNORE INTO storage_descriptions VALUES (?, '')", values: [part.storage]) }
+        try execute("INSERT INTO parts VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET barcode=excluded.barcode,payload=excluded.payload", values: [part.id, part.barcode, try json(part)]) }
+    private func transaction(_ operation: () throws -> Void) throws {
+        try execute("BEGIN IMMEDIATE")
+        do { try operation(); try execute("COMMIT") }
+        catch { try? execute("ROLLBACK"); throw error }
+    }
+    func saveCatalog(kind: CatalogKind, originalName: String?, name: String, description: String) throws {
+        try transaction {
+            let table = kind == .project ? "projects" : "storage_descriptions"
+            if let originalName {
+                try execute("UPDATE \(table) SET name=?, description=? WHERE name=?", values: [name, description, originalName])
+                if kind == .project {
+                    for var allocation in try loadAllocations() where allocation.project.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(originalName) == .orderedSame {
+                        allocation.project = name
+                        try execute("UPDATE allocations SET payload=? WHERE id=?", values: [try json(allocation), allocation.id])
+                    }
+                } else {
+                    for var part in try loadParts() where part.storage.caseInsensitiveCompare(originalName) == .orderedSame {
+                        part.storage = name
+                        try save(part)
+                    }
+                    try execute("DELETE FROM field_values WHERE field='storage' AND name=?", values: [originalName])
+                }
+            } else { try execute("INSERT INTO \(table) VALUES (?, ?)", values: [name, description]) }
+        }
+    }
+    func deleteCatalog(kind: CatalogKind, name: String) throws {
+        try transaction {
+            if kind == .project {
+                for allocation in try loadAllocations() where allocation.project.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(name) == .orderedSame {
+                    try delete(allocation)
+                }
+                try execute("DELETE FROM projects WHERE name=?", values: [name])
+            } else {
+                for var part in try loadParts() where part.storage.caseInsensitiveCompare(name) == .orderedSame {
+                    part.storage = ""
+                    try save(part)
+                }
+                try execute("DELETE FROM storage_descriptions WHERE name=?", values: [name])
+                try execute("DELETE FROM field_values WHERE field='storage' AND name=?", values: [name])
+            }
+        }
+    }
     func delete(_ part: Part) throws { try execute("DELETE FROM parts WHERE id=?", values: [part.id]) }
     func save(_ allocation: Allocation) throws {
         try execute("BEGIN IMMEDIATE")

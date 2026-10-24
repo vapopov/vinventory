@@ -44,7 +44,7 @@ struct PartEditor: View {
                         }
                     }
                     LabeledContent("Storage") {
-                        SuggestionField(text: $part.storage, placeholder: "", suggestions: store.storageLocations, filterOnTyping: true, choose: { part.storage = $0 }, submit: {}).accessibilityLabel("Storage")
+                        SuggestionField(text: $part.storage, placeholder: "", suggestions: store.storageSuggestions, filterOnTyping: true, choose: { part.storage = $0 }, submit: {}).accessibilityLabel("Storage")
                             .help("Choose a recent storage location or type a new one.")
                     }
                     TextField("On-hand stock", value: $part.stock, format: .number)

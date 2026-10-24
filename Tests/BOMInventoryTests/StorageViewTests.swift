@@ -25,8 +25,8 @@ final class StorageViewTests: XCTestCase {
         XCTAssertEqual(reopened.parts.count, 4)
         third.storage = "Shelf A"
         try reopened.save(third)
-        XCTAssertFalse(reopened.locations.contains { $0.name == "Shelf B" })
-        XCTAssertThrowsError(try reopened.saveStorageDescription(name: "Shelf B", description: "No assigned parts"))
+        XCTAssertTrue(reopened.locations.contains { $0.name == "Shelf B" })
+        try reopened.saveStorageDescription(name: "Shelf B", description: "No assigned parts")
         try reopened.saveStorageDescription(name: "Shelf A", description: "")
         XCTAssertEqual(reopened.locations.first { $0.name == "Shelf A" }?.description, "")
     }
@@ -39,7 +39,7 @@ final class StorageViewTests: XCTestCase {
             try repository.save(part)
         }
         let store = InventoryStore(repository: try SQLiteRepository(path: path))
-        XCTAssertEqual(store.locations.map(\.displayName), ["A1"])
-        XCTAssertEqual(store.locations.first?.description, "")
+        XCTAssertEqual(store.locations.map(\.displayName), ["(no storage)", "A1"])
+        XCTAssertEqual(store.locations.first { $0.name == "A1" }?.description, "")
     }
 }

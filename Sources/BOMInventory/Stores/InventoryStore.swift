@@ -35,21 +35,40 @@ import Observation
         storageLocations = try repository.loadSuggestions(for: .storage)
         storageDescriptions = try repository.loadStorageDescriptions()
     }
+    var storageSuggestions: [String] {
+        storageLocations + storageDescriptions.keys.filter { name in
+            !storageLocations.contains { $0.caseInsensitiveCompare(name) == .orderedSame }
+        }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
     var locations: [StorageLocation] {
-        var result = storageLocations.sorted { $0.localizedStandardCompare($1) == .orderedAscending }.map { name in
+        var result = Array(storageDescriptions.keys).sorted { $0.localizedStandardCompare($1) == .orderedAscending }.map { name in
             StorageLocation(name: name, description: storageDescriptions.first { $0.key.caseInsensitiveCompare(name) == .orderedSame }?.value ?? "")
         }
-        if parts.contains(where: { $0.storage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
-            result.insert(StorageLocation(name: nil, description: "Parts without an assigned storage location"), at: 0)
-        }
+        result.insert(StorageLocation(name: nil, description: "Parts without an assigned storage location"), at: 0)
         return result
     }
     func saveStorageDescription(name: String, description: String) throws {
-        guard let canonical = storageLocations.first(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) else {
+        guard let canonical = storageDescriptions.keys.first(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) else {
             throw InventoryError.message("This storage location is no longer assigned to any parts.")
         }
         try repository.saveStorageDescription(name: canonical, description: description.trimmingCharacters(in: .whitespacesAndNewlines))
         storageDescriptions = try repository.loadStorageDescriptions()
+    }
+    func saveCatalog(kind: CatalogKind, originalName: String?, name: String, description: String) throws -> String {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name.caseInsensitiveCompare("(no storage)") != .orderedSame else { throw InventoryError.message("Enter a name; (no storage) is reserved.") }
+        let names = kind == .project ? projects.map(\.name) : Array(storageDescriptions.keys)
+        if let originalName, !names.contains(where: { $0.caseInsensitiveCompare(originalName) == .orderedSame }) { throw InventoryError.message("This entry no longer exists.") }
+        guard !names.contains(where: { candidate in
+            candidate.caseInsensitiveCompare(name) == .orderedSame && (originalName == nil || candidate.caseInsensitiveCompare(originalName!) != .orderedSame)
+        }) else { throw InventoryError.message("This name already exists.") }
+        try repository.saveCatalog(kind: kind, originalName: originalName, name: name, description: description.trimmingCharacters(in: .whitespacesAndNewlines))
+        try reload()
+        return name
+    }
+    func deleteCatalog(kind: CatalogKind, name: String) throws {
+        try repository.deleteCatalog(kind: kind, name: name)
+        try reload()
     }
     // Draft labels stay on the editor's part; only saved assignments enter autocomplete.
     func labelName(for input: String) throws -> String {
@@ -91,7 +110,7 @@ import Observation
         part.tolerance = part.tolerance.trimmingCharacters(in: .whitespacesAndNewlines)
         part.manufacturer = canonical(part.manufacturer, in: manufacturers)
         part.package = canonical(part.package, in: packages)
-        part.storage = canonical(part.storage, in: storageLocations)
+        part.storage = canonical(part.storage, in: Array(storageDescriptions.keys))
         let prepared = try attachmentStorage?.prepare(part)
         part = prepared?.part ?? part
         do { try repository.save(part) }
