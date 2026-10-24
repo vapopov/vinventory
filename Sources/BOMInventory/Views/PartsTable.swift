@@ -4,6 +4,7 @@ import AppKit
 struct PartsTable: NSViewRepresentable {
     var parts: [Part]
     @Binding var selection: String?
+    var preview: ((Part, PartPreviewDismissAction) -> AnyView)? = nil
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSScrollView()
@@ -24,6 +25,10 @@ struct PartsTable: NSViewRepresentable {
         table.delegate = context.coordinator
         table.dataSource = context.coordinator
         table.style = .plain
+        table.target = context.coordinator
+        table.action = #selector(Coordinator.rowClicked(_:))
+        scroll.contentView.postsBoundsChangedNotifications = true
+        context.coordinator.observeScrolling(scroll.contentView)
         let columns: [(String, String, CGFloat)] = [("number", "Part Number", 160), ("manufacturer", "Manufacturer", 150), ("description", "Description", 220), ("package", "Package", 90), ("value", "Value", 80), ("tolerance", "Tolerance", 85), ("stock", "Stock Balance", 110), ("storage", "Storage", 120)]
         for (key, title, width) in columns {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(key))
@@ -38,6 +43,8 @@ struct PartsTable: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         let coordinator = context.coordinator
         let changed = coordinator.parent.parts != parts
+        let rowsChanged = coordinator.parent.parts.map(\.id) != parts.map(\.id)
+        if rowsChanged { coordinator.closePreview() }
         coordinator.parent = self
         guard let table = coordinator.table else { return }
         coordinator.updating = true
@@ -46,12 +53,53 @@ struct PartsTable: NSViewRepresentable {
             if table.selectedRow != index { table.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false) }
         } else { table.deselectAll(nil) }
         coordinator.updating = false
+        if let id = coordinator.previewPartID, !parts.contains(where: { $0.id == id }) { coordinator.closePreview() }
     }
-    final class Coordinator: NSObject, NSTableViewDelegate, NSTableViewDataSource {
+    static func dismantleNSView(_ nsView: NSScrollView, coordinator: Coordinator) { coordinator.stop() }
+    final class Coordinator: NSObject, NSTableViewDelegate, NSTableViewDataSource, NSPopoverDelegate {
         var parent: PartsTable
         weak var table: NSTableView?
         var updating = false
+        var previewPartID: String?
+        private var popover: NSPopover?
+        private var scrollObserver: NSObjectProtocol?
         init(_ parent: PartsTable) { self.parent = parent }
+        func observeScrolling(_ clip: NSClipView) {
+            scrollObserver = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: clip, queue: .main) { [weak self] _ in self?.closePreview() }
+        }
+        @objc func rowClicked(_ sender: NSTableView) {
+            guard let builder = parent.preview, parent.parts.indices.contains(sender.clickedRow) else { return }
+            let row = sender.clickedRow
+            let part = parent.parts[row]
+            closePreview()
+            let popup = NSPopover()
+            popup.behavior = .semitransient
+            popup.animates = false
+            popup.appearance = NSAppearance(named: .darkAqua)
+            popup.delegate = self
+            let dismiss = PartPreviewDismissAction { [weak popup] in popup?.close() }
+            popup.contentViewController = NSHostingController(rootView: builder(part, dismiss))
+            popup.contentSize = NSSize(width: 560, height: 420)
+            popover = popup
+            previewPartID = part.id
+            let cell = sender.frameOfCell(atColumn: 0, row: row).intersection(sender.visibleRect)
+            let anchor = cell.isNull || cell.isEmpty ? sender.rect(ofRow: row).intersection(sender.visibleRect) : cell
+            popup.show(relativeTo: anchor, of: sender, preferredEdge: .maxX)
+        }
+        func closePreview() {
+            popover?.close()
+            popover = nil
+            previewPartID = nil
+        }
+        func popoverDidClose(_ notification: Notification) {
+            if let closed = notification.object as? NSPopover, closed === popover { popover = nil; previewPartID = nil }
+        }
+        func stop() {
+            closePreview()
+            if let scrollObserver { NotificationCenter.default.removeObserver(scrollObserver) }
+            scrollObserver = nil
+        }
+        deinit { stop() }
         func numberOfRows(in tableView: NSTableView) -> Int { parent.parts.count }
         func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { InventoryRowView() }
         func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -82,7 +130,9 @@ struct PartsTable: NSViewRepresentable {
         }
         func tableViewSelectionDidChange(_ notification: Notification) {
             guard !updating, let table else { return }
-            parent.selection = parent.parts.indices.contains(table.selectedRow) ? parent.parts[table.selectedRow].id : nil
+            let id = parent.parts.indices.contains(table.selectedRow) ? parent.parts[table.selectedRow].id : nil
+            if previewPartID != id { closePreview() }
+            parent.selection = id
         }
     }
 }

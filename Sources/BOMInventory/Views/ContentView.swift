@@ -31,7 +31,7 @@ struct ContentView: View {
                     }
                 }
             } else {
-                StorageView(store: store, parts: results, locationSelection: $storageSelection, partSelection: $selection, editPart: { editor = $0 })
+                StorageView(store: store, parts: results, locationSelection: $storageSelection, partSelection: $selection, editPart: { editor = $0 }, showPart: navigateToPart)
             }
             HStack { Circle().fill(Theme.green).frame(width: 6, height: 6); Text("LOCAL INVENTORY").font(.system(size: 10, weight: .semibold)); Spacer(); Text("SQLite  •  \(store.parts.count) parts").font(.system(size: 11)) }.foregroundStyle(Theme.muted).padding(.horizontal, 14).frame(height: 26).background(Theme.background)
         }
@@ -39,14 +39,13 @@ struct ContentView: View {
         .sheet(item: $editor) { part in PartEditor(part: part, store: store) { updated in try store.save(updated, recordFieldUse: true); selection = updated.id } }
         .alert("Delete part?", isPresented: $deleting) { Button("Cancel", role: .cancel) {}; Button("Delete", role: .destructive) { if let selected { store.perform { try store.delete(selected) }; selection = nil } } } message: { Text("The selected part and its project allocations will be permanently removed.") }
         .alert("Inventory error", isPresented: Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })) { Button("OK") { store.error = nil } } message: { Text(store.error ?? "") }
-        .onChange(of: section) { _, _ in selection = nil; scanning = false }
         .onChange(of: query) { _, _ in page = 0 }
         .onChange(of: pageSize) { _, _ in page = 0 }
         .onChange(of: results.count) { _, _ in page = min(page, pages - 1) }
     }
     private var toolbar: some View {
         HStack(spacing: 5) {
-            ViewSwitcher(selection: $section)
+            ViewSwitcher(selection: Binding(get: { section }, set: { section = $0; selection = nil; scanning = false }))
             ToolButton(symbol: "plus", title: "Add part (⌘N)") {
                 var part = Part()
                 if section == .storage { part.storage = store.locations.first { $0.id == storageSelection }?.name ?? "" }
@@ -73,6 +72,11 @@ struct ContentView: View {
                 }
             Text("BOM INVENTORY").font(.system(size: 13, weight: .heavy)).foregroundStyle(Theme.background).padding(.horizontal, 14).frame(height: 34).background(Theme.yellow).padding(.leading, 8)
         }.padding(.horizontal, 10).frame(height: 52).background(Theme.background)
+    }
+    private func navigateToPart(_ part: Part) {
+        section = .parts
+        selection = part.id
+        page = (results.firstIndex { $0.id == part.id } ?? 0) / pageSize
     }
     private func findBarcode() {
         query = barcodeQuery

@@ -6,6 +6,7 @@ struct StorageView: View {
     @Binding var locationSelection: String?
     @Binding var partSelection: String?
     var editPart: (Part) -> Void
+    var showPart: (Part) -> Void
     @State private var page = 0
     @State private var pageSize = 25
     @FocusState private var locationsFocused: Bool
@@ -25,7 +26,9 @@ struct StorageView: View {
                             Button("Edit part") { editPart(part) }.buttonStyle(.plain).foregroundStyle(Theme.yellow)
                         }
                     }.padding(.horizontal, 14).frame(height: 40).background(Theme.raised)
-                    PartsTable(parts: Array(assigned.dropFirst(page * pageSize).prefix(pageSize)), selection: $partSelection)
+                    PartsTable(parts: Array(assigned.dropFirst(page * pageSize).prefix(pageSize)), selection: $partSelection, preview: { part, dismiss in
+                        AnyView(PartPreview(store: store, partID: part.id, dismiss: { dismiss() }, editPart: editPart, showPart: showPart))
+                    })
                         .overlay {
                             if assigned.isEmpty { EmptyState(title: "No matching parts", subtitle: "No parts in this location match the current search.").allowsHitTesting(false) }
                         }
