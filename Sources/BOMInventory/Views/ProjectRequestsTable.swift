@@ -8,8 +8,9 @@ struct ProjectRequestRow: Equatable {
 
 struct ProjectRequestsTable: NSViewRepresentable {
     var rows: [ProjectRequestRow]
+    @Binding var selection: String?
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSScrollView()
@@ -44,6 +45,7 @@ struct ProjectRequestsTable: NSViewRepresentable {
         guard let table = scroll.documentView as? NSTableView else { return }
         let coordinator = context.coordinator
         guard coordinator.rows != rows || !coordinator.initialized else { return }
+        coordinator.parent = self
         coordinator.rows = rows
         coordinator.initialized = true
         table.reloadData()
@@ -51,7 +53,13 @@ struct ProjectRequestsTable: NSViewRepresentable {
     }
 
     final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
+        var parent: ProjectRequestsTable
+        init(parent: ProjectRequestsTable) { self.parent = parent }
         var rows: [ProjectRequestRow] = []
+        func tableViewSelectionDidChange(_ notification: Notification) {
+            guard let table = notification.object as? NSTableView else { return }
+            parent.selection = rows.indices.contains(table.selectedRow) ? rows[table.selectedRow].id : nil
+        }
         var initialized = false
         func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
         func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { InventoryRowView() }

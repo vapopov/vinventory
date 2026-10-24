@@ -9,7 +9,12 @@ struct ProjectBOMImportView: View {
     var showPart: (Part) -> Void
     @State private var tab = 0
     @State private var error: String?
-    private var plan: ProjectBOMPlan? { try? store.planProjectBOM(document, project: project) }
+    private var allRowsDocument: ProjectBOMImport {
+        var copy = document
+        for index in copy.rows.indices { copy.rows[index].included = true }
+        return copy
+    }
+    private var plan: ProjectBOMPlan? { try? store.planProjectBOM(allRowsDocument, project: project) }
     private var requested: [ProjectBOMPlannedRow] { (plan?.rows ?? document.rows.map { ProjectBOMPlannedRow(review: $0, allocated: 0) }).filter { $0.requested > 0 } }
     private var planError: String? {
         do { _ = try store.planProjectBOM(document, project: project); return nil } catch { return error.localizedDescription }
@@ -21,8 +26,8 @@ struct ProjectBOMImportView: View {
             Text("Confirm one candidate per CSV row. Unchecked rows and stock shortages go to Requested. Existing designator groups are replaced on Apply.")
                 .font(.system(size: 12)).foregroundStyle(Theme.muted)
             HStack {
-                Button("Matched (\(matched.count))") { tab = 0 }.foregroundStyle(tab == 0 ? .white : Theme.yellow)
-                Button("Request (\(requested.count))") { tab = 1 }.foregroundStyle(tab == 1 ? .white : Theme.yellow)
+                Button("Matched (\(matched.count))") { tab = 0 }.buttonStyle(ProjectBOMActionStyle())
+                Button("Request (\(requested.count))") { tab = 1 }.buttonStyle(ProjectBOMActionStyle())
                 Spacer()
                 Text("\(document.rows.filter { $0.selectedPartID != nil }.count) confirmed").foregroundStyle(Theme.muted)
             }.buttonStyle(.plain)
@@ -46,7 +51,14 @@ struct ProjectBOMImportView: View {
                     } else {
                         ForEach(requested, id: \.review.id) { row in
                             VStack(alignment: .leading, spacing: 4) {
-                                source(row.review.item, title: "REQUEST \(row.requested)")
+                                HStack {
+                                    Toggle("Include request", isOn: Binding(get: {
+                                        document.rows.first { $0.id == row.review.id }?.included ?? true
+                                    }, set: { included in
+                                        if let index = document.rows.firstIndex(where: { $0.id == row.review.id }) { document.rows[index].included = included }
+                                    })).labelsHidden().padding(.leading, 10).accessibilityLabel("Include request \(row.review.item.value)")
+                                    source(row.review.item, title: "REQUEST \(row.requested)")
+                                }
                                 Text(row.review.selectedPartID == nil ? "No confirmed match" : "Insufficient available stock — \(row.allocated) can be allocated")
                                     .font(.caption).foregroundStyle(Theme.muted).padding(.horizontal, 10).padding(.bottom, 10)
                             }.background(Theme.panel)
@@ -93,6 +105,7 @@ private struct ProjectBOMCandidateRow: View {
             Button("Part Preview") { preview = true }.buttonStyle(.plain).foregroundStyle(Theme.yellow)
                 .popover(isPresented: $preview) { PartPreview(store: store, partID: part.id, dismiss: { preview = false }, editPart: editPart, showPart: showPart) }
         }.padding(10).background(selected ? Theme.selection.opacity(0.5) : .clear)
+            .contentShape(Rectangle()).onTapGesture { selected.toggle() }
     }
 }
 struct ProjectBOMActionStyle: ButtonStyle {

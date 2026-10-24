@@ -2,6 +2,32 @@ import XCTest
 @testable import BOMInventory
 
 final class ProjectBOMTests: XCTestCase {
+    @MainActor func testIgnoredImportAndRequestCRUDPreserveAllocatedStock() throws {
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let store = InventoryStore(repository: try SQLiteRepository(path: path))
+        _ = try store.saveCatalog(kind: .project, originalName: nil, name: "Board", description: "")
+        let capacitor = part("CAP", value: "10uF", stock: 2)
+        try store.save(capacitor)
+        var review = try ProjectBOMImport(text: "Designator,Footprint,Quantity,Value\nC1-C5,0402,5,10uF\nTP1,TestPoint,1,TestPoint", filename: "bom", parts: store.parts)
+        review.rows[0].selectedPartID = capacitor.id
+        review.rows[1].included = false
+        try store.applyProjectBOM(review, projectName: "Board")
+        XCTAssertEqual(store.bomEntries(for: "Board").count, 1)
+        let entry = try XCTUnwrap(store.bomEntries(for: "Board").first)
+        XCTAssertEqual(store.requestedQuantity(entry), 3)
+        var item = entry.item; item.quantity = 7; item.value = "Updated"
+        try store.saveRequest(project: "Board", existing: entry, item: item)
+        let updated = try XCTUnwrap(store.bomEntries(for: "Board").first)
+        XCTAssertEqual(store.requestedQuantity(updated), 7)
+        try store.deleteRequest(updated)
+        XCTAssertEqual(store.requestedQuantity(store.bomEntries(for: "Board")[0]), 0)
+        XCTAssertEqual(store.allocations.first?.quantity, 2)
+        try store.saveRequest(project: "Board", existing: nil, item: item)
+        let added = try XCTUnwrap(store.bomEntries(for: "Board").first { $0.id != entry.id })
+        try store.deleteRequest(added)
+        XCTAssertEqual(store.bomEntries(for: "Board").count, 1)
+    }
     private func part(_ number: String, value: String = "", package: String = "0402", stock: Int = 10) -> Part {
         var part = Part(); part.number = number; part.value = value; part.package = package; part.stock = stock; return part
     }

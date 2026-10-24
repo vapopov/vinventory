@@ -19,6 +19,7 @@ struct ProjectBOMReviewRow: Identifiable {
     var item: ProjectBOMItem
     var candidates: [String]
     var selectedPartID: String?
+    var included = true
     var id: String { item.key }
 }
 struct ProjectBOMImport: Identifiable {

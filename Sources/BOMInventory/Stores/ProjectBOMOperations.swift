@@ -15,7 +15,7 @@ extension InventoryStore {
     func planProjectBOM(_ review: ProjectBOMImport, project: String) throws -> ProjectBOMPlan {
         let previous = bomEntries(for: project)
         let projectAllocations = allocations.filter { $0.project.caseInsensitiveCompare(project) == .orderedSame }
-        let importedRefs = try review.rows.reduce(into: Set<String>()) { $0.formUnion(try Designators.references(in: $1.item.designators)) }
+        let importedRefs = try review.rows.filter { $0.included }.reduce(into: Set<String>()) { $0.formUnion(try Designators.references(in: $1.item.designators)) }
         let affectedEntries = previous.filter { !((try? Designators.references(in: $0.item.designators)) ?? []).isDisjoint(with: importedRefs) }
         let linkedIDs = Set(affectedEntries.compactMap(\.allocationID))
         var removing: [String] = [], residualAllocations: [Allocation] = []
@@ -53,7 +53,7 @@ extension InventoryStore {
             budget[part.id] = available(part) + released - retained
         }
         var planned: [ProjectBOMPlannedRow] = []
-        for row in review.rows {
+        for row in review.rows where row.included {
             var count = 0
             if let id = row.selectedPartID {
                 guard row.candidates.contains(id), parts.contains(where: { $0.id == id }) else { throw InventoryError.message("A selected match is no longer available. Re-open the BOM import.") }
@@ -81,6 +81,26 @@ extension InventoryStore {
             entries.append(entry)
         }
         try saveProjectBOMResult(entries: entries, allocations: reservations, removing: plan.removing, removingEntries: plan.removingEntries)
+    }
+    func saveRequest(project: String, existing: ProjectBOMEntry?, item: ProjectBOMItem) throws {
+        guard item.quantity > 0, !item.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw InventoryError.message("Enter a value or part number and a positive whole-number quantity.")
+        }
+        var entry = existing ?? ProjectBOMEntry(project: project, item: item)
+        let allocated = existing.map { $0.item.quantity - requestedQuantity($0) } ?? 0
+        entry.item = item
+        entry.item.quantity += allocated
+        try saveProjectBOMResult(entries: [entry], allocations: [], removing: [], removingEntries: [])
+    }
+    func deleteRequest(_ entry: ProjectBOMEntry) throws {
+        let allocated = entry.item.quantity - requestedQuantity(entry)
+        if allocated > 0 {
+            var retained = entry
+            retained.item.quantity = allocated
+            try saveProjectBOMResult(entries: [retained], allocations: [], removing: [], removingEntries: [])
+        } else {
+            try saveProjectBOMResult(entries: [], allocations: [], removing: [], removingEntries: [entry.id])
+        }
     }
     func requestedCSV(project: String) -> String {
         func escape(_ value: String) -> String { "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
