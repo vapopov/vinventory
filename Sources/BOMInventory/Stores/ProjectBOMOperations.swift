@@ -82,6 +82,41 @@ extension InventoryStore {
         }
         try saveProjectBOMResult(entries: entries, allocations: reservations, removing: plan.removing, removingEntries: plan.removingEntries)
     }
+    /// Refill confirmed matches first; new matches must have a single candidate.
+    @discardableResult
+    func syncRequests(project: String) throws -> Int {
+        guard projects.contains(where: { $0.name.caseInsensitiveCompare(project) == .orderedSame }) else {
+            throw InventoryError.message("Project no longer exists.")
+        }
+        var budget = Dictionary(uniqueKeysWithValues: parts.map { ($0.id, max(0, available($0))) })
+        var changedEntries: [ProjectBOMEntry] = []
+        var changedAllocations: [String: Allocation] = [:]
+        var total = 0
+        for original in bomEntries(for: project) {
+            let needed = requestedQuantity(original)
+            guard needed > 0 else { continue }
+            let linked = allocations.first { $0.id == original.allocationID }
+            let confirmed = parts.first { $0.id == (linked?.partID ?? original.partID) }
+            let candidates = ProjectBOMMatcher.candidates(for: original.item, parts: parts)
+            guard let part = confirmed ?? (candidates.count == 1 ? candidates.first : nil) else { continue }
+            let count = min(needed, budget[part.id] ?? 0)
+            guard count > 0 else { continue }
+            var entry = original
+            var allocation = linked.flatMap { changedAllocations[$0.id] ?? $0 }
+                ?? Allocation(partID: part.id, project: original.project, quantity: 0, designators: original.item.designators)
+            allocation.quantity += count
+            entry.partID = part.id
+            entry.allocationID = allocation.id
+            changedEntries.append(entry)
+            changedAllocations[allocation.id] = allocation
+            budget[part.id, default: 0] -= count
+            total += count
+        }
+        if total > 0 {
+            try saveProjectBOMResult(entries: changedEntries, allocations: Array(changedAllocations.values), removing: [], removingEntries: [])
+        }
+        return total
+    }
     func saveRequest(project: String, existing: ProjectBOMEntry?, item: ProjectBOMItem) throws {
         guard item.quantity > 0, !item.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw InventoryError.message("Enter a value or part number and a positive whole-number quantity.")

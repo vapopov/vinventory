@@ -12,6 +12,7 @@ struct ProjectRequestsView: View {
     @State private var selection: String?
     @State private var draft: RequestDraft?
     @State private var deleting = false
+    @State private var syncMessage: String?
     private var selected: ProjectBOMEntry? { entries.first { $0.id == selection } }
     @State private var page = 0
     @State private var pageSize = 25
@@ -25,6 +26,14 @@ struct ProjectRequestsView: View {
                 Button { draft = RequestDraft() } label: { Image(systemName: "plus") }.help("Add requested part").accessibilityLabel("Add requested part")
                 Button { if let selected { draft = RequestDraft(entry: selected, quantity: store.requestedQuantity(selected)) } } label: { Image(systemName: "pencil") }.disabled(selected == nil).help("Edit requested part").accessibilityLabel("Edit requested part")
                 Button { deleting = true } label: { Image(systemName: "trash") }.disabled(selected == nil).help("Delete requested part").accessibilityLabel("Delete requested part")
+                Button {
+                    store.perform {
+                        let count = try store.syncRequests(project: project)
+                        syncMessage = count == 0 ? "No available matches" : "Allocated \(count) unit\(count == 1 ? "" : "s")"
+                    }
+                } label: { Image(systemName: "arrow.triangle.2.circlepath") }
+                    .help("Re-match requests with available inventory").accessibilityLabel("Sync requested parts")
+                if let syncMessage { Text(syncMessage).font(.caption).foregroundStyle(Theme.muted) }
                 Spacer()
             }.buttonStyle(.plain).foregroundStyle(Theme.yellow).padding(.horizontal, 14).frame(height: 32).background(Theme.raised)
 

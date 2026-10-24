@@ -28,6 +28,33 @@ final class ProjectBOMTests: XCTestCase {
         try store.deleteRequest(added)
         XCTAssertEqual(store.bomEntries(for: "Board").count, 1)
     }
+    @MainActor func testSyncRequestsUsesNewStockWithoutDuplicatesAndSkipsAmbiguousMatches() throws {
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let store = InventoryStore(repository: try SQLiteRepository(path: path))
+        _ = try store.saveCatalog(kind: .project, originalName: nil, name: "Board", description: "")
+        var cap = part("CAP", value: "10uF", stock: 2)
+        try store.save(cap)
+        var review = try ProjectBOMImport(text: "Designator,Footprint,Quantity,Value\nC1-C5,0402,5,10uF\nU1,QFN,1,NEW", filename: "bom", parts: store.parts)
+        review.rows[0].selectedPartID = cap.id
+        try store.applyProjectBOM(review, projectName: "Board")
+        let allocationID = try XCTUnwrap(store.allocations.first?.id)
+        cap.stock = 4; try store.save(cap)
+        try store.save(part("NEW", package: "QFN", stock: 1))
+        XCTAssertEqual(try store.syncRequests(project: "Board"), 3)
+        XCTAssertEqual(store.allocations.first { $0.id == allocationID }?.quantity, 4)
+        XCTAssertEqual(store.bomEntries(for: "Board").map { store.requestedQuantity($0) }.reduce(0, +), 1)
+        XCTAssertEqual(try store.syncRequests(project: "Board"), 0)
+        cap.stock = 6; try store.save(cap)
+        XCTAssertEqual(try store.syncRequests(project: "Board"), 1)
+        XCTAssertEqual(store.allocations.count, 2)
+        try store.save(part("R-A", value: "1kΩ")); try store.save(part("R-B", value: "1kΩ"))
+        try store.saveRequest(project: "Board", existing: nil, item: ProjectBOMItem(designators: "R1", package: "0402", quantity: 1, value: "1K", lcsc: ""))
+        XCTAssertEqual(try store.syncRequests(project: "Board"), 0)
+        let reopened = InventoryStore(repository: try SQLiteRepository(path: path))
+        XCTAssertEqual(reopened.allocations.count, 2)
+        XCTAssertEqual(reopened.bomEntries(for: "Board").map { reopened.requestedQuantity($0) }.reduce(0, +), 1)
+    }
     private func part(_ number: String, value: String = "", package: String = "0402", stock: Int = 10) -> Part {
         var part = Part(); part.number = number; part.value = value; part.package = package; part.stock = stock; return part
     }
