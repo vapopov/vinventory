@@ -11,6 +11,7 @@ struct PartDetailView: View {
     @State private var quantity = 1
     @State private var designators = ""
     @State private var stock = 0
+    @State private var editingAllocation: Allocation?
     var body: some View {
         VSplitView {
             ScrollView {
@@ -36,6 +37,7 @@ struct PartDetailView: View {
                 HStack { Text(tab == 0 ? "Stock is shared across all project allocations." : "Releasing an allocation returns it to available stock."); Spacer() }.font(.system(size: 11)).foregroundStyle(Theme.muted).padding(12).background(Theme.raised)
             }.background(Theme.row).frame(minHeight: 240)
         }
+        .sheet(item: $editingAllocation) { allocation in AllocationEditor(store: store, allocation: allocation) }
         .sheet(isPresented: $allocating) {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Allocate to project").font(.title2.bold())
@@ -72,7 +74,7 @@ struct PartDetailView: View {
             let allocations = store.allocations.filter { $0.partID == part.id }
             if allocations.isEmpty { Text("No project allocations").foregroundStyle(Theme.muted).padding(30) }
             ForEach(allocations) { allocation in
-                HStack { VStack(alignment: .leading, spacing: 3) { Text(allocation.project).lineLimit(1); if !allocation.designators.isEmpty { Text(allocation.designators).font(.caption).foregroundStyle(Theme.muted).lineLimit(1) } }; Spacer(); Text(allocation.quantity.formatted()).monospacedDigit(); Button("Release") { store.perform { try store.release(allocation) } }.buttonStyle(.plain).foregroundStyle(Theme.yellow).padding(.leading, 18) }.padding(14).background(Theme.panel.opacity(0.6))
+                HStack { VStack(alignment: .leading, spacing: 3) { Text(allocation.project).lineLimit(1); if !allocation.designators.isEmpty { Text(allocation.designators).font(.caption).foregroundStyle(Theme.muted).lineLimit(1) } }; Spacer(); Text(allocation.quantity.formatted()).monospacedDigit(); Button { editingAllocation = allocation } label: { Image(systemName: "pencil") }.buttonStyle(.plain).foregroundStyle(Theme.yellow).help("Edit quantity and designators").accessibilityLabel("Edit allocation for \(allocation.project)").padding(.horizontal, 12); ReleaseAllocationButton(title: allocation.project) { store.perform { try store.release(allocation) } } }.padding(14).background(Theme.panel.opacity(0.6))
                 Divider()
             }
         }

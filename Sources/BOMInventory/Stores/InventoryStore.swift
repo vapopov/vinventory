@@ -138,10 +138,29 @@ import Observation
         projects = try repository.loadProjects().sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
     func saveDesignators(allocationID: String, value: String) throws {
-        guard var allocation = allocations.first(where: { $0.id == allocationID }) else {
+        try updateAllocation(allocationID: allocationID, designators: value)
+    }
+    func saveQuantity(allocationID: String, value: String) throws {
+        guard let quantity = Int(value) else { throw InventoryError.message("Enter a positive whole-number quantity.") }
+        try updateAllocation(allocationID: allocationID, quantity: quantity)
+    }
+    func updateAllocation(allocationID: String, quantity: Int? = nil, designators: String? = nil) throws {
+        guard var allocation = allocations.first(where: { $0.id == allocationID }),
+              let part = parts.first(where: { $0.id == allocation.partID }) else {
             throw InventoryError.message("This allocation has already been released.")
         }
-        allocation.designators = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let previousQuantity = allocation.quantity
+        if let quantity { allocation.quantity = quantity }
+        if let designators {
+            let trimmed = designators.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed != allocation.designators {
+                allocation.designators = trimmed
+                if let count = try Designators.quantity(in: trimmed) { allocation.quantity = count }
+            }
+        }
+        guard allocation.quantity > 0, allocation.quantity <= available(part) + previousQuantity else {
+            throw InventoryError.message("Enter a positive quantity within available stock (up to \(available(part) + previousQuantity)).")
+        }
         try repository.save(allocation)
         try reload()
     }

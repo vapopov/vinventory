@@ -37,6 +37,8 @@ struct ProjectsView: View {
                     }.padding(.horizontal, 14).frame(height: 40).background(Theme.raised)
                     PartsTable(parts: store.parts, selection: rowSelection, allocations: Array(matching.dropFirst(page * pageSize).prefix(pageSize)), rowNumberOffset: page * pageSize, saveDesignators: { allocation, value in
                         try store.saveDesignators(allocationID: allocation.id, value: value)
+                    }, saveQuantity: { allocation, value in
+                        try store.saveQuantity(allocationID: allocation.id, value: value)
                     }, releaseAllocation: { allocation in
                         store.perform { try store.release(allocation) }
                     }, preview: { part, dismiss in

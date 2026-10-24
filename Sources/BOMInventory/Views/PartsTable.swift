@@ -7,6 +7,7 @@ struct PartsTable: NSViewRepresentable {
     var allocations: [Allocation]? = nil
     var rowNumberOffset = 0
     var saveDesignators: ((Allocation, String) throws -> Void)? = nil
+    var saveQuantity: ((Allocation, String) throws -> Void)? = nil
     var releaseAllocation: ((Allocation) -> Void)? = nil
     var preview: ((Part, PartPreviewDismissAction) -> AnyView)? = nil
     private var rows: [PartTableRow] {
@@ -85,7 +86,7 @@ struct PartsTable: NSViewRepresentable {
         }
         @objc func rowClicked(_ sender: NSTableView) {
             guard let builder = parent.preview, rows.indices.contains(sender.clickedRow) else { return }
-            if sender.clickedColumn >= 0, ["designators", "release"].contains(sender.tableColumns[sender.clickedColumn].identifier.rawValue) { return }
+            if sender.clickedColumn >= 0, ["designators", "quantity", "release"].contains(sender.tableColumns[sender.clickedColumn].identifier.rawValue) { return }
             let row = sender.clickedRow
             let item = rows[row]
             let part = item.part
@@ -130,9 +131,13 @@ struct PartsTable: NSViewRepresentable {
                     let save = parent.saveDesignators
                     return hostingCell(InlineTextCell(value: allocation.designators, title: "Designators for \(part.number)") { value in try save?(allocation, value) })
                 }
+                if key == "quantity" {
+                    let save = parent.saveQuantity
+                    return hostingCell(InlineTextCell(value: String(allocation.quantity), title: "Quantity for \(part.number)") { value in try save?(allocation, value) })
+                }
                 if key == "release" {
                     let release = parent.releaseAllocation
-                    return hostingCell(Button("Release") { release?(allocation) }.buttonStyle(.plain).foregroundStyle(Theme.yellow).font(.system(size: 12)).accessibilityLabel("Release allocation for \(part.number)"))
+                    return hostingCell(ReleaseAllocationButton(title: part.number) { release?(allocation) })
                 }
             }
             let text: String

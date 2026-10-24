@@ -21,7 +21,7 @@ final class ProjectTests: XCTestCase {
         try store.saveDesignators(allocationID: first.id, value: " C21-C25 ")
         XCTAssertEqual(store.allocations.first?.designators, "C21-C25")
         XCTAssertEqual(store.allocations[1].designators, "R3, R4, R11")
-        XCTAssertEqual(store.allocations.map(\.quantity), [5, 3], "Editing references must not change allocated quantities")
+        XCTAssertEqual(store.allocations.map(\.quantity), [5, 3], "A five-reference range reserves five units")
         let reopened = InventoryStore(repository: try SQLiteRepository(path: path))
         XCTAssertEqual(reopened.projects.first?.description, "Main controller PCB")
         XCTAssertEqual(reopened.allocations, store.allocations)
@@ -46,6 +46,43 @@ final class ProjectTests: XCTestCase {
         XCTAssertEqual(store.allocations.filter(board.contains).map(\.designators), ["IC2"])
         try store.saveProjectDescription(name: "Board A", description: "Analog board")
         XCTAssertEqual(store.projects.first { $0.name == "Board B" }?.description, "")
+    }
+    func testDesignatorCounting() throws {
+        XCTAssertEqual(try Designators.quantity(in: "R1, R2"), 2)
+        XCTAssertEqual(try Designators.quantity(in: "C16-C20"), 5)
+        XCTAssertEqual(try Designators.quantity(in: "C1"), 1)
+        XCTAssertEqual(try Designators.quantity(in: "C1-C3, C2, R1"), 4)
+        XCTAssertNil(try Designators.quantity(in: " "))
+        for invalid in ["C3-C1", "C1-R3", "R1,", "nonsense", "C1-999999999999999999999999999"] {
+            XCTAssertThrowsError(try Designators.quantity(in: invalid))
+        }
+    }
+    @MainActor func testAllocationEditsRecalculateOnlyChangedDesignatorsAndValidateStock() throws {
+        let store = InventoryStore(repository: try SQLiteRepository(path: ":memory:"))
+        var part = Part(); part.number = "Edit"; part.stock = 10
+        try store.save(part)
+        try store.allocate(part, project: "Board", quantity: 4, designators: "C1")
+        try store.allocate(part, project: "Other", quantity: 3)
+        let id = store.allocations[0].id
+        try store.saveQuantity(allocationID: id, value: "5")
+        XCTAssertEqual(store.allocations[0].quantity, 5)
+        try store.saveDesignators(allocationID: id, value: "C1")
+        XCTAssertEqual(store.allocations[0].quantity, 5)
+        try store.saveDesignators(allocationID: id, value: "C16-C20")
+        XCTAssertEqual(store.allocations[0].quantity, 5)
+        try store.saveDesignators(allocationID: id, value: "R1, R2")
+        XCTAssertEqual(store.allocations[0].quantity, 2)
+        XCTAssertEqual(store.available(part), 5)
+        let before = store.allocations
+        XCTAssertThrowsError(try store.saveDesignators(allocationID: id, value: "C1-C8"))
+        XCTAssertThrowsError(try store.saveQuantity(allocationID: id, value: "8"))
+        XCTAssertThrowsError(try store.saveQuantity(allocationID: id, value: "0"))
+        XCTAssertThrowsError(try store.saveQuantity(allocationID: id, value: "1.5"))
+        XCTAssertEqual(store.allocations, before)
+        try store.saveDesignators(allocationID: id, value: "")
+        XCTAssertEqual(store.allocations[0].quantity, 2)
+        try store.saveDesignators(allocationID: id, value: "IC2")
+        XCTAssertEqual(store.allocations[0].quantity, 1)
     }
     func testProjectCreationRollsBackWhenAllocationCannotBeSaved() throws {
         let repository = try SQLiteRepository(path: ":memory:")
