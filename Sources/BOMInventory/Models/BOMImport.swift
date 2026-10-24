@@ -55,6 +55,26 @@ struct BOMImport: Identifiable {
         }
         rows[row].detected = owned
     }
+    static func parseLabels(_ text: String) -> [String] {
+        var labels: [String] = []
+        for token in text.split(separator: ",") {
+            let name = token.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !name.isEmpty && !labels.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) { labels.append(name) }
+        }
+        return labels
+    }
+    mutating func commitPendingLabels(_ pending: [UUID: String], suggestions: [String]) {
+        guard let column = headers.firstIndex(where: { Self.field(for: $0) == "labels" }) else { return }
+        for row in rows.indices where rows[row].selected {
+            guard let draft = pending[rows[row].id], !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            var names = Self.parseLabels(rows[row].values[column])
+            for label in Self.parseLabels(draft) {
+                let name = suggestions.first { $0.caseInsensitiveCompare(label) == .orderedSame } ?? label
+                if !names.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) { names.append(name) }
+            }
+            setValue(names.joined(separator: ", "), row: row, column: column)
+        }
+    }
     static func field(for header: String) -> String? {
         let key = header.lowercased().filter { $0.isLetter || $0.isNumber }
         switch key {
@@ -86,7 +106,7 @@ struct BOMImport: Identifiable {
                 case "storage": part.storage = value
                 case "datasheet": part.datasheet = value
                 case "barcode": if !value.isEmpty { part.barcode = value }
-                case "labels": part.labels = value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+                case "labels": part.labels = Self.parseLabels(value)
                 case "stock":
                     guard let count = Int(value.isEmpty ? "0" : value), count >= 0 else { throw InventoryError.message("Row \(index + 2): quantity must be a nonnegative whole number.") }
                     part.stock = count

@@ -158,21 +158,49 @@ import Observation
         try reload()
     }
     func importParts(_ imported: [Part]) throws {
-        var barcodes = Set(parts.map(\.barcode))
-        var prepared: [Part] = []
-        for var part in imported {
-            guard !part.number.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, part.stock >= 0 else { throw InventoryError.message("Every imported part needs a part number and nonnegative stock.") }
-            guard barcodes.insert(part.barcode).inserted else { throw InventoryError.message("Duplicate barcode for \(part.number).") }
-            part.manufacturer = canonical(part.manufacturer, in: manufacturers + prepared.map(\.manufacturer))
-            part.package = canonical(part.package, in: packages + prepared.map(\.package))
-            part.storage = canonical(part.storage, in: Array(storageDescriptions.keys) + prepared.map(\.storage))
-            if !part.datasheet.isEmpty {
-                let url = try DatasheetReference.url(for: part.datasheet)
-                guard !url.isFileURL else { throw InventoryError.message("Import datasheets as web links; use the part editor for local PDFs.") }
-            }
-            prepared.append(part)
+        func key(_ value: String) -> String { value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        var working = parts
+        var numberIndex: [String: Set<Int>] = [:], lcscIndex: [String: Set<Int>] = [:]
+        func register(_ part: Part, at index: Int) {
+            if !key(part.number).isEmpty { numberIndex[key(part.number), default: []].insert(index) }
+            if !key(part.lcsc).isEmpty { lcscIndex[key(part.lcsc), default: []].insert(index) }
         }
-        try repository.saveImportedParts(prepared)
+        for (index, part) in working.enumerated() { register(part, at: index) }
+        var barcodes = Set(parts.map(\.barcode)), changed = Set<Int>()
+        for var part in imported {
+            part.number = part.number.trimmingCharacters(in: .whitespacesAndNewlines)
+            part.lcsc = part.lcsc.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !part.number.isEmpty, part.stock >= 0 else { throw InventoryError.message("Every imported part needs a part number and nonnegative stock.") }
+            let matches = (numberIndex[key(part.number)] ?? []).union(key(part.lcsc).isEmpty ? [] : (lcscIndex[key(part.lcsc)] ?? []))
+            guard matches.count <= 1 else { throw InventoryError.message("\(part.number): part number or LCSC number matches multiple inventory parts. Resolve the conflicting identifiers before importing.") }
+            var canonicalLabels: [String] = []
+            for label in part.labels {
+                let name = canonical(label, in: labels + working.flatMap(\.labels) + canonicalLabels)
+                if !name.isEmpty && !canonicalLabels.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) { canonicalLabels.append(name) }
+            }
+            part.labels = canonicalLabels
+            if let index = matches.first {
+                let (stock, overflow) = working[index].stock.addingReportingOverflow(part.stock)
+                guard !overflow else { throw InventoryError.message("Stock quantity is too large for \(part.number).") }
+                working[index].stock = stock
+                for label in part.labels where !working[index].labels.contains(where: { $0.caseInsensitiveCompare(label) == .orderedSame }) { working[index].labels.append(label) }
+                if working[index].lcsc.isEmpty { working[index].lcsc = part.lcsc }
+                register(part, at: index)
+                changed.insert(index)
+            } else {
+                guard barcodes.insert(part.barcode).inserted else { throw InventoryError.message("Duplicate barcode for \(part.number).") }
+                part.manufacturer = canonical(part.manufacturer, in: manufacturers + working.map(\.manufacturer))
+                part.package = canonical(part.package, in: packages + working.map(\.package))
+                part.storage = canonical(part.storage, in: Array(storageDescriptions.keys) + working.map(\.storage))
+                if !part.datasheet.isEmpty {
+                    let url = try DatasheetReference.url(for: part.datasheet)
+                    guard !url.isFileURL else { throw InventoryError.message("Import datasheets as web links; use the part editor for local PDFs.") }
+                }
+                let index = working.count
+                working.append(part); register(part, at: index); changed.insert(index)
+            }
+        }
+        try repository.saveImportedParts(changed.sorted().map { working[$0] })
         try reload()
     }
     func allocateBulk(projectName: String, drafts: [Allocation]) throws {

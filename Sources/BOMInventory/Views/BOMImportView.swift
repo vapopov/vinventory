@@ -4,12 +4,21 @@ struct BOMImportView: View {
     @State var document: BOMImport
     var store: InventoryStore
     var finish: () -> Void
+    @State private var labelDrafts: [UUID: String] = [:]
     @State private var error: String?
     private var selectedCount: Int { document.rows.filter(\.selected).count }
+    private func columnWidth(_ column: Int) -> CGFloat { BOMImport.field(for: document.headers[column]) == "labels" ? 240 : 180 }
+    private var labelSuggestions: [String] {
+        let column = document.headers.firstIndex { BOMImport.field(for: $0) == "labels" }
+        let importedLabels = column.map { index in document.rows.flatMap { BOMImport.parseLabels($0.values[index]) } } ?? []
+        var names: [String] = []
+        for label in store.labels + importedLabels where !names.contains(where: { $0.caseInsensitiveCompare(label) == .orderedSame }) { names.append(label) }
+        return names
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Import parts — \(document.filename)").font(.title2.bold())
-            Text("Edit any cell and uncheck rows to skip. Selected rows are imported as new parts; unknown columns become custom fields.").foregroundStyle(Theme.muted)
+            Text("Edit any cell and uncheck rows to skip. Matching part or LCSC numbers increase stock; other rows create new parts. Unknown columns become custom fields.").foregroundStyle(Theme.muted)
             HStack {
                 Button("Select all") { for i in document.rows.indices { document.rows[i].selected = true } }
                 Button("Deselect all") { for i in document.rows.indices { document.rows[i].selected = false } }
@@ -23,10 +32,15 @@ struct BOMImportView: View {
                                 Toggle("Import row \(row + 1)", isOn: $document.rows[row].selected).labelsHidden().frame(width: 46)
                                 Text("\(row + 1)").foregroundStyle(Theme.muted).frame(width: 35)
                                 ForEach(document.headers.indices, id: \.self) { column in
-                                    TextField(document.headers[column], text: Binding(get: { document.rows[row].values[column] }, set: { document.setValue($0, row: row, column: column) }))
-                                        .textFieldStyle(.plain).padding(7).frame(width: 180)
-                                        .accessibilityLabel("Row \(row + 1), \(document.headers[column])")
-                                        .opacity(document.ignoredCustomColumns.contains(column) ? 0.35 : 1)
+                                    if BOMImport.field(for: document.headers[column]) == "labels" {
+                                        ImportLabelsCell(labels: Binding(get: { BOMImport.parseLabels(document.rows[row].values[column]) }, set: { document.setValue($0.joined(separator: ", "), row: row, column: column) }), pending: Binding(get: { labelDrafts[document.rows[row].id] ?? "" }, set: { labelDrafts[document.rows[row].id] = $0 }), suggestions: labelSuggestions, rowNumber: row + 1)
+                                            .frame(width: columnWidth(column))
+                                    } else {
+                                        TextField(document.headers[column], text: Binding(get: { document.rows[row].values[column] }, set: { document.setValue($0, row: row, column: column) }))
+                                            .textFieldStyle(.plain).padding(7).frame(width: columnWidth(column))
+                                            .accessibilityLabel("Row \(row + 1), \(document.headers[column])")
+                                            .opacity(document.ignoredCustomColumns.contains(column) ? 0.35 : 1)
+                                    }
                                 }
                             }.frame(minHeight: 34).background(row.isMultiple(of: 2) ? Theme.row : Theme.panel)
                         }
@@ -43,7 +57,7 @@ struct BOMImportView: View {
                                         })).toggleStyle(.checkbox).font(.caption2).foregroundStyle(Theme.yellow)
                                             .accessibilityLabel("Import custom field \(document.headers[column])")
                                     }
-                                }.padding(7).frame(width: 180, alignment: .leading)
+                                }.padding(7).frame(width: columnWidth(column), alignment: .leading)
                             }
                         }.font(.system(size: 12, weight: .semibold)).frame(height: 48).background(Theme.raised)
                     }
@@ -54,11 +68,15 @@ struct BOMImportView: View {
                 Spacer()
                 Button("Cancel") { finish() }.keyboardShortcut(.cancelAction)
                 Button("Apply") {
-                    do { try store.importParts(document.selectedParts()); finish() }
+                    do {
+                        document.commitPendingLabels(labelDrafts, suggestions: labelSuggestions)
+                        labelDrafts = [:]
+                        try store.importParts(document.selectedParts()); finish()
+                    }
                     catch { self.error = error.localizedDescription }
                 }.keyboardShortcut(.defaultAction).disabled(selectedCount == 0)
             }.buttonStyle(ImportActionStyle())
-        }.padding(22).frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.panel)
+        }.padding(22).frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.panel).suggestionOverlay()
     }
 }
 
