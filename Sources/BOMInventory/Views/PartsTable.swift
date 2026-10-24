@@ -29,6 +29,7 @@ struct PartsTable: NSViewRepresentable {
         let table = NSTableView()
         table.headerView = NSTableHeaderView()
         table.rowHeight = 30
+        table.usesAutomaticRowHeights = false
         table.intercellSpacing = NSSize(width: 1, height: 1)
         table.backgroundColor = NSColor(Theme.row)
         table.usesAlternatingRowBackgroundColors = false
@@ -38,6 +39,7 @@ struct PartsTable: NSViewRepresentable {
         table.delegate = context.coordinator
         table.dataSource = context.coordinator
         table.style = .plain
+        table.rowSizeStyle = .custom
         table.target = context.coordinator
         table.action = #selector(Coordinator.rowClicked(_:))
         scroll.contentView.postsBoundsChangedNotifications = true
@@ -64,7 +66,11 @@ struct PartsTable: NSViewRepresentable {
         coordinator.rows = updatedRows
         guard let table = coordinator.table else { return }
         coordinator.updating = true
-        if changed || table.numberOfRows != updatedRows.count { table.reloadData() }
+        if changed || !coordinator.heightLayoutReady || table.numberOfRows != updatedRows.count {
+            coordinator.heightLayoutReady = true
+            table.reloadData()
+            table.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0..<updatedRows.count))
+        }
         if let index = updatedRows.firstIndex(where: { $0.id == selection }) {
             if table.selectedRow != index { table.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false) }
         } else { table.deselectAll(nil) }
@@ -76,6 +82,7 @@ struct PartsTable: NSViewRepresentable {
         var parent: PartsTable
         weak var table: NSTableView?
         var updating = false
+        var heightLayoutReady = false
         var rows: [PartTableRow]
         var previewPartID: String?
         private var popover: NSPopover?
@@ -85,9 +92,17 @@ struct PartsTable: NSViewRepresentable {
             scrollObserver = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: clip, queue: .main) { [weak self] _ in self?.closePreview() }
         }
         @objc func rowClicked(_ sender: NSTableView) {
-            guard let builder = parent.preview, rows.indices.contains(sender.clickedRow) else { return }
+            guard rows.indices.contains(sender.clickedRow) else { return }
             if sender.clickedColumn >= 0, ["designators", "quantity", "release"].contains(sender.tableColumns[sender.clickedColumn].identifier.rawValue) { return }
-            let row = sender.clickedRow
+            showPreview(row: sender.clickedRow)
+        }
+        private func previewCell(id: String) {
+            guard let table, let row = rows.firstIndex(where: { $0.id == id }) else { return }
+            table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            showPreview(row: row)
+        }
+        private func showPreview(row: Int) {
+            guard let sender = table, let builder = parent.preview, rows.indices.contains(row) else { return }
             let item = rows[row]
             let part = item.part
             closePreview()
@@ -121,6 +136,22 @@ struct PartsTable: NSViewRepresentable {
         }
         deinit { stop() }
         func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+        func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+            guard rows.indices.contains(row), let allocation = rows[row].allocation,
+                  let column = tableView.tableColumns.first(where: { $0.identifier.rawValue == "designators" }) else { return 30 }
+            let width = max(10, column.width - 36) // padding, spacing, and reserved pencil
+            let text = allocation.designators.isEmpty ? "—" : allocation.designators
+            // Measure with the same SwiftUI layout used by the cell, including word breaks.
+            let measurement = NSHostingView(rootView: Text(text).font(.system(size: 13))
+                .lineLimit(nil).fixedSize(horizontal: false, vertical: true).frame(width: width))
+            return max(30, ceil(measurement.fittingSize.height) + 12)
+        }
+
+        func tableViewColumnDidResize(_ notification: Notification) {
+            guard let table, parent.allocations != nil else { return }
+            closePreview()
+            table.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0..<rows.count))
+        }
         func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { InventoryRowView() }
         func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
             guard rows.indices.contains(row), let key = tableColumn?.identifier.rawValue else { return nil }
@@ -129,11 +160,11 @@ struct PartsTable: NSViewRepresentable {
             if let allocation = item.allocation {
                 if key == "designators" {
                     let save = parent.saveDesignators
-                    return hostingCell(InlineTextCell(value: allocation.designators, title: "Designators for \(part.number)") { value in try save?(allocation, value) })
+                    return hostingCell(InlineTextCell(value: allocation.designators, title: "Designators for \(part.number)", wraps: true, preview: { [weak self] in self?.previewCell(id: item.id) }) { value in try save?(allocation, value) })
                 }
                 if key == "quantity" {
                     let save = parent.saveQuantity
-                    return hostingCell(InlineTextCell(value: String(allocation.quantity), title: "Quantity for \(part.number)") { value in try save?(allocation, value) })
+                    return hostingCell(InlineTextCell(value: String(allocation.quantity), title: "Quantity for \(part.number)", preview: { [weak self] in self?.previewCell(id: item.id) }) { value in try save?(allocation, value) })
                 }
                 if key == "release" {
                     let release = parent.releaseAllocation

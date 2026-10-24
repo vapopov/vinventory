@@ -4,6 +4,8 @@ import SwiftUI
 struct InlineTextCell: View {
     var value: String
     var title: String
+    var wraps = false
+    var preview: (() -> Void)? = nil
     var save: (String) throws -> Void
     @State private var hovering = false
     @State private var editing = false
@@ -23,7 +25,10 @@ struct InlineTextCell: View {
                         }
                     }.task { focused = true }
             } else {
-                Text(value.isEmpty ? "—" : value).lineLimit(1).help(value).frame(maxWidth: .infinity, alignment: .leading)
+                if let preview {
+                    Button(action: preview) { displayText.contentShape(Rectangle()) }
+                        .buttonStyle(.plain).accessibilityLabel("Preview \(title)")
+                } else { displayText }
             }
             Button { beginEditing() } label: { Image(systemName: "pencil").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.yellow) }
                 .buttonStyle(.plain).accessibilityLabel("Edit \(title)").opacity(hovering || editing ? 1 : 0)
@@ -34,6 +39,11 @@ struct InlineTextCell: View {
             .onChange(of: focused) { old, new in if old && !new { commit() } }
             .onDisappear { commit() }
             .alert("Could not save \(title)", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) { Button("OK") { error = nil } } message: { Text(error ?? "") }
+    }
+    private var displayText: some View {
+        Text(value.isEmpty ? "—" : value).lineLimit(wraps ? nil : 1)
+            .fixedSize(horizontal: false, vertical: wraps).multilineTextAlignment(.leading)
+            .help(value).frame(maxWidth: .infinity, alignment: .leading)
     }
     private func beginEditing() { if !editing { draft = value; editing = true }; focused = true }
     private func commit() {
