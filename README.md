@@ -42,4 +42,17 @@ Data lives in `~/Library/Application Support/BOMInventory/inventory.sqlite`. Att
 
 `InventoryRepository` defines the persistence boundary. `SQLiteRepository` currently stores Codable payloads in part/allocation tables alongside a persistent label catalog with a unique barcode constraint and cascading allocation deletion. Schema version is tracked with `PRAGMA user_version`. A future PostgreSQL implementation can conform to the repository interface; remote asynchronous operations, credentials, and migrations will require additional work. Current search and pagination run in memory and are intended for local inventories.
 
-Projects have persisted descriptions and named allocation records; project revisions and independent BOM line items are outside this iteration. Cost, worth, purchasing, import, and external catalog integration are outside this iteration. Barcode search supports pasted input and keyboard-wedge USB scanners; there is no camera scanner.
+Projects have persisted descriptions and named allocation records; project revisions and independent BOM line items are outside this iteration. Cost calculations, worth, purchasing, and external catalog integration are outside this iteration. Supplier price columns are retained as custom field text. Barcode search supports pasted input and keyboard-wedge USB scanners; there is no camera scanner.
+
+### CSV parts import and custom fields
+
+- Optional LCSC supplier numbers appear in the editor, part summary, and parts tables and are searchable.
+- Custom name/value fields are editable with plus/minus controls and stored as a JSON object in each SQLite part payload. Existing records default to an empty object. A future PostgreSQL repository can map this object to JSONB.
+- The download icon beside search opens CSV import. LCSC exports map LCSC Part Number, Manufacture Part Number, Manufacturer, Package, Description, and Quantity; generic part number/value/tolerance/storage/datasheet/labels/barcode columns are also recognized. Unknown headers are retained as custom fields, including Unit Price and RoHS.
+- Review editable CSV cells directly in the main screen, with horizontal and vertical scrolling. Apply and Cancel use yellow backgrounds and black text. Custom-field header checkboxes exclude a whole column from every imported record. Rows start selected; uncheck rows to omit them. Apply creates new part records in one transaction, with fresh unique barcodes unless supplied. It does not merge into existing inventory. Cancel leaves inventory unchanged. Invalid quantities, missing part numbers, or duplicate barcodes prevent the batch from being saved.
+
+### Description analysis
+
+CSV import adds editable Value, Tolerance, and Labels columns when absent. Description analysis fills missing values and labels for resistors (including 4.7kΩ, 4.7kOhm, 4k7Ohm, 4k7Ω, and 4MOhm), capacitors (pF/nF/uF), inductors (pH/nH/uH), crystals, and oscillators. Crystal frequency takes precedence over load capacitance. Tolerance recognizes percentages and ppm, excluding temperature coefficients such as ppm/℃. Explicit CSV fields and manual edits take priority; editing a description refreshes fields still owned by the analyzer. The part editor also offers Analyze description to fill missing value/tolerance and append an inferred label.
+
+Inductor, Capacitor, Resistor, Crystal, Oscillator, and IC are permanent built-in labels. Other unused labels continue to be pruned.

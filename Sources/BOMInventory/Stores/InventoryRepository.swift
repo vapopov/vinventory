@@ -15,6 +15,7 @@ protocol InventoryRepository {
     func loadParts() throws -> [Part]
     func loadAllocations() throws -> [Allocation]
     func save(_ part: Part) throws
+    func saveImportedParts(_ parts: [Part]) throws
     func delete(_ part: Part) throws
     func save(_ allocation: Allocation) throws
     func saveMergedAllocation(_ allocation: Allocation, removing duplicates: [Allocation]) throws
@@ -48,8 +49,9 @@ final class SQLiteRepository: InventoryRepository {
         for part in try loadParts() where !part.storage.isEmpty {
             try execute("INSERT OR IGNORE INTO storage_descriptions VALUES (?, '')", values: [part.storage])
         }
+        for label in DescriptionAnalysis.builtInLabels { try execute("INSERT OR IGNORE INTO labels VALUES (?, 0)", values: [label]) }
         try pruneUnusedSuggestions()
-        try execute("PRAGMA user_version = 6")
+        try execute("PRAGMA user_version = 7")
     }
     deinit { sqlite3_close(db) }
     private func execute(_ sql: String, values: [String] = []) throws {
@@ -117,7 +119,7 @@ final class SQLiteRepository: InventoryRepository {
     func pruneUnusedSuggestions() throws {
         let parts = try loadParts()
         let assignedLabels = parts.flatMap(\.labels)
-        for label in try loadLabels() where !assignedLabels.contains(where: { $0.caseInsensitiveCompare(label) == .orderedSame }) {
+        for label in try loadLabels() where !DescriptionAnalysis.builtInLabels.contains(where: { $0.caseInsensitiveCompare(label) == .orderedSame }) && !assignedLabels.contains(where: { $0.caseInsensitiveCompare(label) == .orderedSame }) {
             try execute("DELETE FROM labels WHERE name=?", values: [label])
         }
         for field in RecentField.allCases {
@@ -160,6 +162,18 @@ final class SQLiteRepository: InventoryRepository {
     func save(_ part: Part) throws {
         if !part.storage.isEmpty { try execute("INSERT OR IGNORE INTO storage_descriptions VALUES (?, '')", values: [part.storage]) }
         try execute("INSERT INTO parts VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET barcode=excluded.barcode,payload=excluded.payload", values: [part.id, part.barcode, try json(part)]) }
+    func saveImportedParts(_ parts: [Part]) throws {
+        try transaction {
+            for part in parts {
+                try save(part)
+                for field in RecentField.allCases {
+                    let value = field.value(in: part)
+                    if !value.isEmpty { try registerSuggestion(value, for: field) }
+                }
+                for label in part.labels { try registerLabel(label) }
+            }
+        }
+    }
     private func transaction(_ operation: () throws -> Void) throws {
         try execute("BEGIN IMMEDIATE")
         do { try operation(); try execute("COMMIT") }

@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 struct ContentView: View {
     @Bindable var store: InventoryStore
     @State private var query = ""
@@ -6,6 +8,7 @@ struct ContentView: View {
     @State private var storageSelection: String?
     @State private var projectSelection: String?
     @State private var selection: String?
+    @State private var importDocument: BOMImport?
     @State private var editor: Part?
     @State private var deleting = false
     @State private var scanning = false
@@ -19,7 +22,9 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             toolbar
-            if section == .parts {
+            if let document = importDocument {
+                BOMImportView(document: document, store: store, finish: { importDocument = nil }).id(document.id)
+            } else if section == .parts {
                 HSplitView {
                     VStack(spacing: 0) {
                         PartsTable(parts: visible, selection: $selection)
@@ -49,7 +54,7 @@ struct ContentView: View {
     }
     private var toolbar: some View {
         HStack(spacing: 5) {
-            ViewSwitcher(selection: Binding(get: { section }, set: { section = $0; selection = nil; scanning = false }))
+            ViewSwitcher(selection: Binding(get: { section }, set: { section = $0; selection = nil; scanning = false; importDocument = nil }))
             ToolButton(symbol: "plus", title: "Add part (⌘N)") {
                 var part = Part()
                 if section == .storage { part.storage = store.locations.first { $0.id == storageSelection }?.name ?? "" }
@@ -74,8 +79,21 @@ struct ContentView: View {
                         Button("Find part") { findBarcode() }
                     }.padding(20).frame(width: 340)
                 }
+            ToolButton(symbol: "arrow.down.to.line", title: "Import parts from CSV") { chooseImportFile() }.disabled(importDocument != nil)
             Text("BOM INVENTORY").font(.system(size: 13, weight: .heavy)).foregroundStyle(Theme.background).padding(.horizontal, 14).frame(height: 34).background(Theme.yellow).padding(.leading, 8)
         }.padding(.horizontal, 10).frame(height: 52).background(Theme.background)
+    }
+    private func chooseImportFile() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.commaSeparatedText, .plainText]
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Review import"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let data = try Data(contentsOf: url)
+            guard let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .utf16) else { throw InventoryError.message("Use a UTF-8 or UTF-16 CSV file.") }
+            importDocument = try BOMImport(text: text, filename: url.lastPathComponent)
+        } catch { store.error = error.localizedDescription }
     }
     private func navigateToProject(_ name: String) {
         guard let project = store.projects.first(where: { $0.name.caseInsensitiveCompare(name.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame }) else { return }

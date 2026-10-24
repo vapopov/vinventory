@@ -107,6 +107,7 @@ import Observation
             if !canonicalLabels.contains(canonical) { canonicalLabels.append(canonical) }
         }
         part.labels = canonicalLabels
+        part.lcsc = part.lcsc.trimmingCharacters(in: .whitespacesAndNewlines)
         part.tolerance = part.tolerance.trimmingCharacters(in: .whitespacesAndNewlines)
         part.manufacturer = canonical(part.manufacturer, in: manufacturers)
         part.package = canonical(part.package, in: packages)
@@ -154,6 +155,24 @@ import Observation
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }.joined(separator: ", ")
         try repository.saveMergedAllocation(combined, removing: Array(existing.dropFirst()))
+        try reload()
+    }
+    func importParts(_ imported: [Part]) throws {
+        var barcodes = Set(parts.map(\.barcode))
+        var prepared: [Part] = []
+        for var part in imported {
+            guard !part.number.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, part.stock >= 0 else { throw InventoryError.message("Every imported part needs a part number and nonnegative stock.") }
+            guard barcodes.insert(part.barcode).inserted else { throw InventoryError.message("Duplicate barcode for \(part.number).") }
+            part.manufacturer = canonical(part.manufacturer, in: manufacturers + prepared.map(\.manufacturer))
+            part.package = canonical(part.package, in: packages + prepared.map(\.package))
+            part.storage = canonical(part.storage, in: Array(storageDescriptions.keys) + prepared.map(\.storage))
+            if !part.datasheet.isEmpty {
+                let url = try DatasheetReference.url(for: part.datasheet)
+                guard !url.isFileURL else { throw InventoryError.message("Import datasheets as web links; use the part editor for local PDFs.") }
+            }
+            prepared.append(part)
+        }
+        try repository.saveImportedParts(prepared)
         try reload()
     }
     func allocateBulk(projectName: String, drafts: [Allocation]) throws {
@@ -208,7 +227,7 @@ import Observation
     func search(_ query: String) -> [Part] {
         let tokens = query.lowercased().split(whereSeparator: { $0.isWhitespace })
         return parts.filter { part in
-            let fields = [part.number, part.manufacturer, part.description, part.package, part.value, part.tolerance, part.labels.joined(separator: " "), part.barcode].joined(separator: " ").lowercased()
+            let fields = [part.number, part.manufacturer, part.lcsc, part.customFields.map { "\($0.key) \($0.value)" }.joined(separator: " "), part.description, part.package, part.value, part.tolerance, part.labels.joined(separator: " "), part.barcode].joined(separator: " ").lowercased()
             return tokens.allSatisfy { fields.contains($0) }
         }.sorted { $0.number.localizedStandardCompare($1.number) == .orderedAscending }
     }

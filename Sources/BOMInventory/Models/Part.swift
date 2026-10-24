@@ -3,6 +3,8 @@ struct Part: Identifiable, Codable, Equatable {
     var id = UUID().uuidString
     var number = ""
     var manufacturer = ""
+    var lcsc = ""
+    var customFields: [String: String] = [:]
     var labels: [String] = []
     var tolerance = ""
     var description = ""
@@ -16,7 +18,7 @@ struct Part: Identifiable, Codable, Equatable {
 
     init() {}
     private enum CodingKeys: String, CodingKey {
-        case id, number, manufacturer, labels, tolerance, description, package, value, storage, datasheet, barcode, stock, image
+        case id, number, manufacturer, lcsc, customFields, labels, tolerance, description, package, value, storage, datasheet, barcode, stock, image
     }
     private enum LegacyKeys: String, CodingKey { case category }
     init(from decoder: Decoder) throws {
@@ -24,6 +26,8 @@ struct Part: Identifiable, Codable, Equatable {
         id = try data.decode(String.self, forKey: .id)
         number = try data.decode(String.self, forKey: .number)
         manufacturer = try data.decode(String.self, forKey: .manufacturer)
+        lcsc = try data.decodeIfPresent(String.self, forKey: .lcsc) ?? ""
+        customFields = try data.decodeIfPresent([String: String].self, forKey: .customFields) ?? [:]
         if let saved = try data.decodeIfPresent([String].self, forKey: .labels) {
             labels = saved
         } else {

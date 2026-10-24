@@ -50,7 +50,7 @@ final class InventoryTests: XCTestCase {
         XCTAssertEqual(store.labelSuggestions(for: ""), (3...12).reversed().map { "Label \($0)" })
         XCTAssertEqual(try store.labelName(for: "  LABEL 1  "), "Label 1")
         try store.save(saved[0], recordFieldUse: true)
-        XCTAssertEqual(store.labels.count, 12)
+        XCTAssertEqual(store.labels.count, 12 + DescriptionAnalysis.builtInLabels.count)
         XCTAssertEqual(store.labels.first, "Label 1")
         XCTAssertEqual(store.labelSuggestions(for: "label 1", excluding: ["Label 1"]), ["Label 12", "Label 11", "Label 10"])
         XCTAssertThrowsError(try store.labelName(for: "  "))
@@ -79,11 +79,11 @@ final class InventoryTests: XCTestCase {
         let updated = try XCTUnwrap(repository.loadParts().first(where: { $0.id == part.id }))
         XCTAssertTrue(updated.labels.isEmpty)
         XCTAssertEqual(updated.tolerance, "5%")
-        XCTAssertEqual(store.labels, ["Passive"], "A label stays available while another part uses it")
+        XCTAssertEqual(store.labels.filter { !DescriptionAnalysis.builtInLabels.contains($0) }, ["Passive"], "A label stays available while another part uses it")
         try store.delete(part)
-        XCTAssertEqual(store.labels, ["Passive"])
+        XCTAssertEqual(store.labels.filter { !DescriptionAnalysis.builtInLabels.contains($0) }, ["Passive"])
         try store.delete(seed)
-        XCTAssertTrue(store.labels.isEmpty)
+        XCTAssertEqual(Set(store.labels), Set(DescriptionAnalysis.builtInLabels))
     }
     @MainActor func testManufacturerAndPackageHistory() throws {
         let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
@@ -132,25 +132,25 @@ final class InventoryTests: XCTestCase {
         try store.save(first, recordFieldUse: true)
         XCTAssertEqual(Set(store.manufacturers), ["Murate", "TDK"])
         XCTAssertEqual(Set(store.packages), ["0805", "0603"])
-        XCTAssertEqual(Set(store.labels), ["Inductor", "Passive"])
+        XCTAssertEqual(Set(store.labels), Set(DescriptionAnalysis.builtInLabels + ["Passive"]))
         second.manufacturer = "TDK"; second.package = "0603"; second.labels = ["Passive"]
         try store.save(second, recordFieldUse: true)
         XCTAssertEqual(store.manufacturers, ["TDK"])
         XCTAssertEqual(store.packages, ["0603"])
-        XCTAssertEqual(store.labels, ["Passive"])
+        XCTAssertEqual(store.labels.filter { !DescriptionAnalysis.builtInLabels.contains($0) }, ["Passive"])
         XCTAssertFalse(try repository.loadSuggestions(for: .manufacturer).contains("Murate"))
         XCTAssertFalse(try repository.loadSuggestions(for: .package).contains("0805"))
-        XCTAssertFalse(try repository.loadLabels().contains("Inductor"))
+        XCTAssertTrue(try repository.loadLabels().contains("Inductor"), "Built-in labels remain without assignments")
         try store.delete(first)
         XCTAssertEqual(store.manufacturers, ["TDK"])
         XCTAssertEqual(store.packages, ["0603"])
-        XCTAssertEqual(store.labels, ["Passive"])
+        XCTAssertEqual(store.labels.filter { !DescriptionAnalysis.builtInLabels.contains($0) }, ["Passive"])
         second.manufacturer = ""; second.package = ""; second.labels = []
         try store.save(second)
         let reopened = InventoryStore(repository: try SQLiteRepository(path: path))
         XCTAssertTrue(reopened.manufacturers.isEmpty)
         XCTAssertTrue(reopened.packages.isEmpty)
-        XCTAssertTrue(reopened.labels.isEmpty)
+        XCTAssertEqual(Set(reopened.labels), Set(DescriptionAnalysis.builtInLabels))
     }
     func testStartupRemovesLegacyOrphanSuggestions() throws {
         let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
@@ -166,7 +166,7 @@ final class InventoryTests: XCTestCase {
         let repository = try SQLiteRepository(path: path)
         XCTAssertEqual(try repository.loadSuggestions(for: .manufacturer), ["TDK"])
         XCTAssertEqual(try repository.loadSuggestions(for: .package), ["0603"])
-        XCTAssertEqual(try repository.loadLabels(), ["Passive"])
+        XCTAssertEqual(Set(try repository.loadLabels()), Set(DescriptionAnalysis.builtInLabels + ["Passive"]))
     }
     @MainActor func testStorageRecencySharedAssignmentsAndCleanup() throws {
         let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
@@ -216,7 +216,7 @@ final class InventoryTests: XCTestCase {
         XCTAssertEqual(part.tolerance, "")
         XCTAssertNil(part.image)
         XCTAssertEqual(part.barcode, "original-barcode")
-        XCTAssertEqual(try repository.loadLabels(), ["Inductor"])
+        XCTAssertEqual(Set(try repository.loadLabels()), Set(DescriptionAnalysis.builtInLabels))
         XCTAssertEqual(try repository.loadSuggestions(for: .manufacturer), ["Murata"])
         XCTAssertEqual(try repository.loadSuggestions(for: .package), ["SMD"])
         XCTAssertEqual(try repository.loadSuggestions(for: .storage), ["A1"])

@@ -28,6 +28,14 @@ struct PartSummaryView: View {
                 ToolButton(symbol: "qrcode", title: "Show barcode label") { barcode.toggle() }.popover(isPresented: $barcode) { BarcodePopover(part: part) }
                 Button("Datasheet") { if let url = try? DatasheetReference.url(for: part.datasheet) { NSWorkspace.shared.open(url) } }.buttonStyle(.plain).foregroundStyle(Theme.yellow).padding(9).background(Theme.raised).disabled(part.datasheet.isEmpty).help(part.datasheet.hasPrefix("/") ? "Open local PDF" : "Open datasheet in browser")
             }
+            if !part.lcsc.isEmpty { Text("LCSC  \(part.lcsc)").font(.system(size: 12)).foregroundStyle(Theme.muted).textSelection(.enabled) }
+            if !part.customFields.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(part.customFields.keys.sorted(), id: \.self) { key in
+                        HStack(alignment: .top) { Text(key).foregroundStyle(Theme.muted).frame(width: 140, alignment: .leading); Text(part.customFields[key] ?? "").textSelection(.enabled); Spacer() }
+                    }
+                }.font(.system(size: 12))
+            }
             HStack(spacing: 8) { metric("On-hand", part.stock); metric("Available", available, color: Theme.green); metric("Allocated", allocated) }
             HStack { Image(systemName: "archivebox"); if part.storage.isEmpty { Text("No storage assigned") } else { DestinationLink(title: part.storage, destination: "storage") { beforeNavigate(); navigation.storage(part.storage) } }; Spacer(); Button("Edit details", action: edit).buttonStyle(.plain).foregroundStyle(Theme.yellow) }.font(.system(size: 12)).foregroundStyle(Theme.muted)
         }.padding(24)

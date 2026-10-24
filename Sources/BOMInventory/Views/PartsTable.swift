@@ -45,7 +45,7 @@ struct PartsTable: NSViewRepresentable {
         table.action = #selector(Coordinator.rowClicked(_:))
         scroll.contentView.postsBoundsChangedNotifications = true
         context.coordinator.observeScrolling(scroll.contentView)
-        var columns: [(String, String, CGFloat)] = [("number", "Part Number", 160), ("manufacturer", "Manufacturer", 150), ("description", "Description", 220), ("package", "Package", 90), ("value", "Value", 80), ("tolerance", "Tolerance", 85), ("stock", "Stock Balance", 110), ("storage", "Storage", 120)]
+        var columns: [(String, String, CGFloat)] = [("number", "Part Number", 160), ("manufacturer", "Manufacturer", 150), ("lcsc", "LCSC", 100), ("description", "Description", 220), ("package", "Package", 90), ("value", "Value", 80), ("tolerance", "Tolerance", 85), ("stock", "Stock Balance", 110), ("storage", "Storage", 120)]
         if allocations != nil { columns.insert(contentsOf: [("rowNumber", "#", 40), ("designators", "Designators", 180), ("quantity", "Qty", 65)] + (draftMode ? [] : [("release", "", 80)]), at: 0) }
         for (key, title, width) in columns {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(key))
@@ -178,6 +178,7 @@ struct PartsTable: NSViewRepresentable {
             case "quantity": text = item.allocation?.quantity.formatted() ?? ""
             case "number": text = part.number
             case "manufacturer": text = part.manufacturer
+            case "lcsc": text = part.lcsc
             case "description": text = part.description
             case "package": text = part.package
             case "value": text = part.value
