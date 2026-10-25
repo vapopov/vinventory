@@ -38,19 +38,26 @@ final class ProjectBOMTests: XCTestCase {
         var review = try ProjectBOMImport(text: "Designator,Footprint,Quantity,Value\nC1-C5,0402,5,10uF\nU1,QFN,1,NEW", filename: "bom", parts: store.parts)
         review.rows[0].selectedPartID = cap.id
         try store.applyProjectBOM(review, projectName: "Board")
+        func checkedMatches() -> [String: String] {
+            Dictionary(uniqueKeysWithValues: store.bomEntries(for: "Board").compactMap { entry in
+                let candidates = store.requestCandidates(entry)
+                return candidates.count == 1 ? (entry.id, candidates[0].id) : nil
+            })
+        }
+        XCTAssertEqual(try store.syncRequests(project: "Board", matches: [:]), 0, "Review without checked rows must not allocate")
         let allocationID = try XCTUnwrap(store.allocations.first?.id)
         cap.stock = 4; try store.save(cap)
         try store.save(part("NEW", package: "QFN", stock: 1))
-        XCTAssertEqual(try store.syncRequests(project: "Board"), 3)
+        XCTAssertEqual(try store.syncRequests(project: "Board", matches: checkedMatches()), 3)
         XCTAssertEqual(store.allocations.first { $0.id == allocationID }?.quantity, 4)
         XCTAssertEqual(store.bomEntries(for: "Board").map { store.requestedQuantity($0) }.reduce(0, +), 1)
-        XCTAssertEqual(try store.syncRequests(project: "Board"), 0)
+        XCTAssertEqual(try store.syncRequests(project: "Board", matches: checkedMatches()), 0)
         cap.stock = 6; try store.save(cap)
-        XCTAssertEqual(try store.syncRequests(project: "Board"), 1)
+        XCTAssertEqual(try store.syncRequests(project: "Board", matches: checkedMatches()), 1)
         XCTAssertEqual(store.allocations.count, 2)
         try store.save(part("R-A", value: "1kΩ")); try store.save(part("R-B", value: "1kΩ"))
         try store.saveRequest(project: "Board", existing: nil, item: ProjectBOMItem(designators: "R1", package: "0402", quantity: 1, value: "1K", lcsc: ""))
-        XCTAssertEqual(try store.syncRequests(project: "Board"), 0)
+        XCTAssertEqual(try store.syncRequests(project: "Board", matches: checkedMatches()), 0)
         let reopened = InventoryStore(repository: try SQLiteRepository(path: path))
         XCTAssertEqual(reopened.allocations.count, 2)
         XCTAssertEqual(reopened.bomEntries(for: "Board").map { reopened.requestedQuantity($0) }.reduce(0, +), 1)

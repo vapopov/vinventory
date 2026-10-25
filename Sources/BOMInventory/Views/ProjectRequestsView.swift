@@ -13,6 +13,8 @@ struct ProjectRequestsView: View {
     @State private var draft: RequestDraft?
     @State private var deleting = false
     @State private var syncMessage: String?
+    @State private var reviewingSync = false
+    @State private var syncMatches: [String: String] = [:]
     private var selected: ProjectBOMEntry? { entries.first { $0.id == selection } }
     @State private var page = 0
     @State private var pageSize = 25
@@ -23,25 +25,39 @@ struct ProjectRequestsView: View {
         let visible = filtered.dropFirst(offset).prefix(pageSize)
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                Button { draft = RequestDraft() } label: { Image(systemName: "plus") }.help("Add requested part").accessibilityLabel("Add requested part")
-                Button { if let selected { draft = RequestDraft(entry: selected, quantity: store.requestedQuantity(selected)) } } label: { Image(systemName: "pencil") }.disabled(selected == nil).help("Edit requested part").accessibilityLabel("Edit requested part")
-                Button { deleting = true } label: { Image(systemName: "trash") }.disabled(selected == nil).help("Delete requested part").accessibilityLabel("Delete requested part")
+                Button { draft = RequestDraft() } label: { Image(systemName: "plus") }.disabled(reviewingSync).help("Add requested part").accessibilityLabel("Add requested part")
+                Button { if let selected { draft = RequestDraft(entry: selected, quantity: store.requestedQuantity(selected)) } } label: { Image(systemName: "pencil") }.disabled(selected == nil || reviewingSync).help("Edit requested part").accessibilityLabel("Edit requested part")
+                Button { deleting = true } label: { Image(systemName: "trash") }.disabled(selected == nil || reviewingSync).help("Delete requested part").accessibilityLabel("Delete requested part")
                 Button {
-                    store.perform {
-                        let count = try store.syncRequests(project: project)
-                        syncMessage = count == 0 ? "No available matches" : "Allocated \(count) unit\(count == 1 ? "" : "s")"
+                    if reviewingSync {
+                        store.perform {
+                            let count = try store.syncRequests(project: project, matches: syncMatches)
+                            syncMessage = "Allocated \(count) unit\(count == 1 ? "" : "s")"
+                            reviewingSync = false; syncMatches = [:]
+                        }
+                    } else {
+                        syncMatches = [:]; syncMessage = nil; reviewingSync = true
                     }
-                } label: { Image(systemName: "arrow.triangle.2.circlepath") }
-                    .help("Re-match requests with available inventory").accessibilityLabel("Sync requested parts")
+                } label: { Image(systemName: reviewingSync ? "checkmark" : "arrow.triangle.2.circlepath") }
+                    .help(reviewingSync ? "Apply checked matches" : "Review matches with available inventory")
+                    .accessibilityLabel(reviewingSync ? "Apply requested matches" : "Sync requested parts")
+                if reviewingSync {
+                    Button { reviewingSync = false; syncMatches = [:] } label: { Image(systemName: "xmark") }
+                        .help("Cancel sync").accessibilityLabel("Cancel sync")
+                }
                 if let syncMessage { Text(syncMessage).font(.caption).foregroundStyle(Theme.muted) }
                 Spacer()
             }.buttonStyle(.plain).foregroundStyle(Theme.yellow).padding(.horizontal, 14).frame(height: 32).background(Theme.raised)
 
+            if reviewingSync {
+                RequestSyncReview(store: store, entries: filtered, matches: $syncMatches)
+            } else {
             ProjectRequestsTable(rows: visible.enumerated().map { index, entry in
                 ProjectRequestRow(id: entry.id, values: [String(offset + index + 1), entry.item.designators,
                     String(store.requestedQuantity(entry)), entry.item.value, entry.item.package, entry.item.lcsc])
             }, selection: $selection)
             PaginationBar(count: filtered.count, page: $page, pageSize: $pageSize, unit: "requested row")
+            }
         }
         .background(Theme.row)
         .sheet(item: $draft) { draft in
@@ -51,7 +67,7 @@ struct ProjectRequestsView: View {
             Button("Cancel", role: .cancel) {}
             Button("Delete", role: .destructive) { if let selected { store.perform { try store.deleteRequest(selected) } } }
         } message: { Text("Remove this request. Any stock already allocated will be kept.") }
-        .onChange(of: project) { page = 0 }
+        .onChange(of: project) { page = 0; reviewingSync = false; syncMatches = [:] }
         .onChange(of: query) { page = 0 }
         .onChange(of: pageSize) { page = 0 }
         .onChange(of: filtered.count) { page = min(page, max(0, (filtered.count - 1) / pageSize)) }

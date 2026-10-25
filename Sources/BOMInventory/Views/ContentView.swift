@@ -80,7 +80,7 @@ struct ContentView: View {
                     }.padding(20).frame(width: 340)
                 }
             ToolButton(symbol: "arrow.down.to.line", title: "Import parts from CSV") { chooseImportFile() }.disabled(importDocument != nil)
-            Text("BOM INVENTORY").font(.system(size: 13, weight: .heavy)).foregroundStyle(Theme.background).padding(.horizontal, 14).frame(height: 34).background(Theme.yellow).padding(.leading, 8)
+            Image(nsImage: AppBrand.icon).resizable().interpolation(.high).scaledToFit().frame(width: 34, height: 34).padding(.leading, 8).accessibilityLabel("BOM Inventory logo")
         }.padding(.horizontal, 10).frame(height: 52).background(Theme.background)
     }
     private func chooseImportFile() {

@@ -82,9 +82,19 @@ extension InventoryStore {
         }
         try saveProjectBOMResult(entries: entries, allocations: reservations, removing: plan.removing, removingEntries: plan.removingEntries)
     }
-    /// Refill confirmed matches first; new matches must have a single candidate.
+    func requestCandidates(_ entry: ProjectBOMEntry) -> [Part] {
+        if let allocation = allocations.first(where: { $0.id == entry.allocationID }) {
+            return parts.filter { $0.id == allocation.partID }
+        }
+        var matches = ProjectBOMMatcher.candidates(for: entry.item, parts: parts)
+        if let confirmed = parts.first(where: { $0.id == entry.partID }), !matches.contains(where: { $0.id == confirmed.id }) {
+            matches.insert(confirmed, at: 0)
+        }
+        return matches
+    }
+    /// Apply only explicitly checked request matches, retaining existing reservations.
     @discardableResult
-    func syncRequests(project: String) throws -> Int {
+    func syncRequests(project: String, matches: [String: String]) throws -> Int {
         guard projects.contains(where: { $0.name.caseInsensitiveCompare(project) == .orderedSame }) else {
             throw InventoryError.message("Project no longer exists.")
         }
@@ -96,9 +106,10 @@ extension InventoryStore {
             let needed = requestedQuantity(original)
             guard needed > 0 else { continue }
             let linked = allocations.first { $0.id == original.allocationID }
-            let confirmed = parts.first { $0.id == (linked?.partID ?? original.partID) }
-            let candidates = ProjectBOMMatcher.candidates(for: original.item, parts: parts)
-            guard let part = confirmed ?? (candidates.count == 1 ? candidates.first : nil) else { continue }
+            guard let partID = matches[original.id] else { continue }
+            guard let part = requestCandidates(original).first(where: { $0.id == partID }) else {
+                throw InventoryError.message("A selected match changed. Cancel sync and review the requests again.")
+            }
             let count = min(needed, budget[part.id] ?? 0)
             guard count > 0 else { continue }
             var entry = original

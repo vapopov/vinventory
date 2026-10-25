@@ -59,6 +59,8 @@ struct PartEditor: View {
                     CustomFieldsEditor(fields: $customFields)
                     LabeledContent("Barcode") { Text(part.barcode).font(.system(size: 10, design: .monospaced)).textSelection(.enabled) }
                 }.textFieldStyle(.roundedBorder)
+                    .padding(.trailing, 20)
+                    .padding(.vertical, 4)
             }.frame(maxHeight: 540)
             if let error { Text(error).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
             HStack { Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction); Button("Save part") { do {
