@@ -11,7 +11,7 @@ struct ContentView: View {
     @State private var importDocument: BOMImport?
     @State private var editor: Part?
     @State private var deleting = false
-    @State private var scanning = false
+    @State private var cameraScanning = false
     @State private var page = 0
     @State private var pageSize = 25
     @State private var barcodeQuery = ""
@@ -45,6 +45,9 @@ struct ContentView: View {
         }
         .environment(\.inventoryNavigation, InventoryNavigation(project: navigateToProject, storage: navigateToStorage))
         .font(.system(size: 13)).background(Theme.background)
+        .sheet(isPresented: $cameraScanning) {
+            CameraBarcodeScanner { code in barcodeQuery = code; section = .parts; importDocument = nil; findBarcode() }
+        }
         .sheet(item: $editor) { part in PartEditor(part: part, store: store) { updated in try store.save(updated, recordFieldUse: true); selection = updated.id } }
         .alert("Delete part?", isPresented: $deleting) { Button("Cancel", role: .cancel) {}; Button("Delete", role: .destructive) { if let selected { store.perform { try store.delete(selected) }; selection = nil } } } message: { Text("The selected part and its project allocations will be permanently removed.") }
         .alert("Inventory error", isPresented: Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })) { Button("OK") { store.error = nil } } message: { Text(store.error ?? "") }
@@ -54,7 +57,7 @@ struct ContentView: View {
     }
     private var toolbar: some View {
         HStack(spacing: 5) {
-            ViewSwitcher(selection: Binding(get: { section }, set: { section = $0; selection = nil; scanning = false; importDocument = nil }))
+            ViewSwitcher(selection: Binding(get: { section }, set: { section = $0; selection = nil; importDocument = nil }))
             ToolButton(symbol: "plus", title: "Add part (⌘N)") {
                 var part = Part()
                 if section == .storage { part.storage = store.locations.first { $0.id == storageSelection }?.name ?? "" }
@@ -70,15 +73,7 @@ struct ContentView: View {
                 TextField(section == .parts ? "Search parts, values, packages…" : (section == .storage ? "Search parts in storage…" : "Search parts or designators…"), text: $query).textFieldStyle(.plain).frame(width: 230)
                 if !query.isEmpty { Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.muted) }.buttonStyle(.plain) }
             }.padding(.horizontal, 10).frame(height: 34).background(Theme.raised)
-            ToolButton(symbol: "barcode.viewfinder", title: "Search by barcode") { scanning.toggle() }
-                .popover(isPresented: $scanning) {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Find by barcode").font(.headline)
-                        Text("Scan with a USB scanner or paste a barcode, then press Return.").foregroundStyle(Theme.muted)
-                        TextField("Barcode", text: $barcodeQuery).onSubmit { findBarcode() }
-                        Button("Find part") { findBarcode() }
-                    }.padding(20).frame(width: 340)
-                }
+            ToolButton(symbol: "barcode.viewfinder", title: "Scan barcode with camera") { cameraScanning = true }
             ToolButton(symbol: "arrow.down.to.line", title: "Import parts from CSV") { chooseImportFile() }.disabled(importDocument != nil)
             Image(nsImage: AppBrand.icon).resizable().interpolation(.high).scaledToFit().frame(width: 34, height: 34).padding(.leading, 8).accessibilityLabel("BOM Inventory logo")
         }.padding(.horizontal, 10).frame(height: 52).background(Theme.background)
@@ -125,6 +120,5 @@ struct ContentView: View {
             }
             selection = part.id
         } else { selection = nil }
-        scanning = false
     }
 }
