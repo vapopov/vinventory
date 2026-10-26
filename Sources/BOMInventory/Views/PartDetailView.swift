@@ -16,7 +16,7 @@ struct PartDetailView: View {
     var body: some View {
         VSplitView {
             ScrollView {
-                PartSummaryView(part: part, available: store.available(part), allocated: store.allocated(part), edit: edit)
+                PartSummaryView(part: part, available: store.available(part), allocated: store.allocated(part), projects: store.projectCount(part), edit: edit)
             }.background(Theme.panel).frame(minHeight: 300, idealHeight: 390)
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
@@ -67,7 +67,7 @@ struct PartDetailView: View {
             dataRow("STATUS", "QTY", "STORAGE", header: true)
             dataRow("Available", store.available(part).formatted(), part.storage, color: Theme.green)
             dataRow("Allocated", store.allocated(part).formatted(), "\(store.allocations.filter { $0.partID == part.id }.count) reservations")
-            dataRow("On-hand", part.stock.formatted(), part.storage)
+            dataRow("Stock", part.stock.formatted(), part.storage)
         }
     }
     private var allocationRows: some View {

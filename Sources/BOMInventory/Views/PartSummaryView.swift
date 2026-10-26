@@ -7,6 +7,7 @@ struct PartSummaryView: View {
     var part: Part
     var available: Int
     var allocated: Int
+    var projects: Int
     var edit: () -> Void
     var beforeNavigate: () -> Void = {}
     @State private var barcode = false
@@ -39,7 +40,7 @@ struct PartSummaryView: View {
                     }
                 }.font(.system(size: 12))
             }
-            HStack(spacing: 8) { metric("On-hand", part.stock); metric("Available", available, color: Theme.green); metric("Allocated", allocated) }
+            HStack(spacing: 8) { metric("Stock", part.stock); metric("Available", available, color: Theme.green); metric("Allocated", allocated); metric("Projects", projects) }
             HStack { Image(systemName: "archivebox"); if part.storage.isEmpty { Text("No storage assigned") } else { DestinationLink(title: part.storage, destination: "storage") { beforeNavigate(); navigation.storage(part.storage) } }; Spacer(); Button("Edit details", action: edit).buttonStyle(.plain).foregroundStyle(Theme.yellow) }.font(.system(size: 12)).foregroundStyle(Theme.muted)
         }.padding(24)
     }

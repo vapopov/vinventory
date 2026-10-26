@@ -54,7 +54,7 @@ struct PartEditor: View {
                         SuggestionField(text: $part.storage, placeholder: "", suggestions: store.storageSuggestions, filterOnTyping: true, choose: { part.storage = $0 }, submit: {}).accessibilityLabel("Storage")
                             .help("Choose a recent storage location or type a new one.")
                     }
-                    TextField("On-hand stock", value: $part.stock, format: .number)
+                    TextField("Stock", value: $part.stock, format: .number)
                     LabeledContent("Datasheet") { DatasheetEditor(value: $part.datasheet, downloading: $downloadingDatasheet, draft: attachmentDraft) }
                     CustomFieldsEditor(fields: $customFields)
                     LabeledContent("Barcode") { Text(part.barcode).font(.system(size: 10, design: .monospaced)).textSelection(.enabled) }

@@ -85,6 +85,11 @@ import Observation
             (trimmed.isEmpty || label.localizedCaseInsensitiveContains(trimmed))
         }.prefix(10))
     }
+    func projectCount(_ part: Part) -> Int {
+        Set(allocations.filter { $0.partID == part.id && $0.quantity > 0 }
+            .map { $0.project.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty }).count
+    }
     func allocated(_ part: Part) -> Int { allocations.filter { $0.partID == part.id }.reduce(0) { $0 + $1.quantity } }
     func available(_ part: Part) -> Int { part.stock - allocated(part) }
     func save(_ part: Part, recordFieldUse: Bool = false) throws {
