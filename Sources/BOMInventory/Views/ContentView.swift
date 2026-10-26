@@ -3,6 +3,12 @@ import AppKit
 import UniformTypeIdentifiers
 struct ContentView: View {
     @Bindable var store: InventoryStore
+    @StateObject private var api: InventoryAPIServer
+    @State private var apiSettings = false
+    init(store: InventoryStore) {
+        self.store = store
+        _api = StateObject(wrappedValue: InventoryAPIServer(store: store))
+    }
     @State private var query = ""
     @State private var labelFilters: Set<String> = []
     @State private var showingLabelFilters = false
@@ -49,7 +55,12 @@ struct ContentView: View {
             } else {
                 ProjectsView(store: store, query: query, projectSelection: $projectSelection, partSelection: $selection, editPart: { editor = $0 }, showPart: navigateToPart)
             }
-            HStack { Circle().fill(Theme.green).frame(width: 6, height: 6); Text("LOCAL INVENTORY").font(.system(size: 10, weight: .semibold)); Spacer(); Text("SQLite  •  \(store.parts.count) parts").font(.system(size: 11)) }.foregroundStyle(Theme.muted).padding(.horizontal, 14).frame(height: 26).background(Theme.background)
+            HStack { Circle().fill(Theme.green).frame(width: 6, height: 6); Text("LOCAL INVENTORY").font(.system(size: 10, weight: .semibold)); Spacer(); Text("SQLite  •  \(store.parts.count) parts").font(.system(size: 11))
+                Button { apiSettings.toggle() } label: {
+                    Text("API").font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
+                        .padding(.horizontal, 7).padding(.vertical, 3).background(Theme.green.opacity(api.running ? 1 : 0.65), in: RoundedRectangle(cornerRadius: 3))
+                }.buttonStyle(.plain).help("Configure HTTP API server").accessibilityLabel("API server settings")
+                    .popover(isPresented: $apiSettings) { APISettingsPopover(server: api) } }.foregroundStyle(Theme.muted).padding(.horizontal, 14).frame(height: 26).background(Theme.background)
         }
         .environment(\.inventoryNavigation, InventoryNavigation(project: navigateToProject, storage: navigateToStorage))
         .font(.system(size: 13)).background(Theme.background)

@@ -72,3 +72,7 @@ Requested supports search and CSV export using Designator, Footprint, Quantity, 
 ## License
 
 Licensed under the [MIT License](LICENSE). Copyright © 2026 Vadym Popov.
+
+## HTTP API
+
+Use the **API** button in the bottom-right status bar to configure and start the optional HTTP server. See [api.md](api.md) for endpoints and examples.
