@@ -68,3 +68,7 @@ Matching uses exact part number from Value or LCSC number first. Passives use no
 Apply reserves available stock and records unmatched, unchecked, and short-stock quantities in the project's Requested tab. The changes are transactional. Re-importing replaces references present in the new BOM rather than adding a second reservation; different reference grouping is supported, and references outside the import retain their reservations/requests. Project rename/delete includes its BOM requirements. Released reservations return their BOM quantity to Requested.
 
 Requested supports search and CSV export using Designator, Footprint, Quantity, Value, and LCSC Part #. Quantity is the amount still needed, so the export contains only missing quantities rather than the full original BOM.
+
+## License
+
+Licensed under the [MIT License](LICENSE). Copyright © 2026 Vadym Popov.
