@@ -10,13 +10,19 @@ struct StorageView: View {
     var showPart: (Part) -> Void
     @State private var catalogDraft: CatalogDraft?
     @State private var deletingCatalog = false
+    @State private var bulkAdding = false
+    @State private var checked: Set<String> = []
     @State private var page = 0
     @State private var pageSize = 25
     @FocusState private var locationsFocused: Bool
     private var locations: [StorageLocation] { store.locations }
     private var location: StorageLocation? { locations.first { $0.id == locationSelection } }
     private var assigned: [Part] { guard let location else { return [] }; return parts.filter(location.contains) }
-    private var pages: Int { max(1, (assigned.count + pageSize - 1) / pageSize) }
+    private var displayed: [Part] {
+        guard bulkAdding, let location else { return assigned }
+        return parts.filter { !location.contains($0) }
+    }
+    private var pages: Int { max(1, (displayed.count + pageSize - 1) / pageSize) }
     var body: some View {
         HSplitView {
             locationList.frame(minWidth: 290, idealWidth: 380, maxWidth: 540)
@@ -24,18 +30,30 @@ struct StorageView: View {
                 if let location {
                     HStack {
                         Text("INVENTORY IN \(location.displayName.uppercased())").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)
+                        Button(action: toggleBulkAdding) {
+                            Image(systemName: bulkAdding ? "checkmark" : "plus.square.on.square").font(.system(size: 12, weight: .semibold)).frame(width: 26, height: 26)
+                        }.buttonStyle(.plain).foregroundStyle(Theme.yellow)
+                            .help(bulkAdding ? "Apply storage assignments" : "Bulk add parts to storage")
+                            .accessibilityLabel(bulkAdding ? "Apply storage assignments" : "Bulk add parts to storage")
+                        if bulkAdding {
+                            Button { cancelBulkAdding() } label: { Image(systemName: "xmark").frame(width: 26, height: 26) }.buttonStyle(.plain).foregroundStyle(Theme.yellow).help("Cancel bulk adding")
+                            Text("\(checked.count) selected").font(.caption).foregroundStyle(Theme.muted)
+                        }
                         Spacer()
-                        if let part = assigned.first(where: { $0.id == partSelection }) {
+                        if !bulkAdding, let part = assigned.first(where: { $0.id == partSelection }) {
                             Button("Edit part") { editPart(part) }.buttonStyle(.plain).foregroundStyle(Theme.yellow)
                         }
                     }.padding(.horizontal, 14).frame(height: 40).background(Theme.raised)
-                    PartsTable(parts: Array(assigned.dropFirst(page * pageSize).prefix(pageSize)), selection: $partSelection, preview: { part, dismiss in
+                    PartsTable(parts: Array(displayed.dropFirst(page * pageSize).prefix(pageSize)), selection: $partSelection,
+                        checkedPartIDs: bulkAdding ? checked : nil, checkPart: { id, included in
+                            if included { checked.insert(id) } else { checked.remove(id) }
+                        }, preview: { part, dismiss in
                         AnyView(PartPreview(store: store, partID: part.id, dismiss: { dismiss() }, editPart: editPart, showPart: showPart).environment(\.inventoryNavigation, navigation))
-                    })
+                    }).id(bulkAdding)
                         .overlay {
-                            if assigned.isEmpty { EmptyState(title: "No matching parts", subtitle: "No parts in this location match the current search.").allowsHitTesting(false) }
+                            if displayed.isEmpty { EmptyState(title: "No matching parts", subtitle: bulkAdding ? "All matching parts are already in this location." : "No parts in this location match the current search.").allowsHitTesting(false) }
                         }
-                    PaginationBar(count: assigned.count, page: $page, pageSize: $pageSize)
+                    PaginationBar(count: displayed.count, page: $page, pageSize: $pageSize)
                 } else {
                     EmptyState(title: "Select a storage location", subtitle: "Add a storage location or select (no storage).")
                 }
@@ -56,14 +74,24 @@ struct StorageView: View {
         .onAppear { reconcileSelection() }
         .onChange(of: locations.map(\.id)) { _, _ in reconcileSelection() }
         .onChange(of: locationSelection) { _, _ in
-            page = 0
+            cancelBulkAdding()
             if let partSelection, !assigned.contains(where: { $0.id == partSelection }) { self.partSelection = nil }
         }
         .onChange(of: pageSize) { _, _ in page = 0 }
-        .onChange(of: assigned.map(\.id)) { _, ids in
+        .onChange(of: displayed.map(\.id)) { _, ids in
             page = min(page, pages - 1)
             if let partSelection, !ids.contains(partSelection) { self.partSelection = nil }
         }
+    }
+    private func cancelBulkAdding() { bulkAdding = false; checked = []; page = 0 }
+    private func toggleBulkAdding() {
+        if bulkAdding {
+            guard let location else { return }
+            do {
+                try store.assignStorage(location.name, partIDs: checked)
+                cancelBulkAdding()
+            } catch { store.error = error.localizedDescription }
+        } else { checked = []; bulkAdding = true; page = 0; partSelection = nil }
     }
     private var locationList: some View {
         VStack(spacing: 0) {

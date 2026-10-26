@@ -7,6 +7,8 @@ struct PartsTable: NSViewRepresentable {
     var allocations: [Allocation]? = nil
     var rowNumberOffset = 0
     var draftMode = false
+    var checkedPartIDs: Set<String>? = nil
+    var checkPart: ((String, Bool) -> Void)? = nil
     var saveDesignators: ((Allocation, String) throws -> Void)? = nil
     var saveQuantity: ((Allocation, String) throws -> Void)? = nil
     var releaseAllocation: ((Allocation) -> Void)? = nil
@@ -47,6 +49,7 @@ struct PartsTable: NSViewRepresentable {
         context.coordinator.observeScrolling(scroll.contentView)
         var columns: [(String, String, CGFloat)] = [("number", "Part Number", 160), ("manufacturer", "Manufacturer", 150), ("lcsc", "LCSC", 100), ("description", "Description", 220), ("package", "Package", 90), ("value", "Value", 80), ("tolerance", "Tolerance", 85), ("stock", "Stock Balance", 110), ("storage", "Storage", 120)]
         if allocations != nil { columns.insert(contentsOf: [("rowNumber", "#", 40), ("designators", "Designators", 180), ("quantity", "Qty", 65)] + (draftMode ? [] : [("release", "", 80)]), at: 0) }
+        if checkedPartIDs != nil { columns.insert(("check", "Add", 45), at: 0) }
         for (key, title, width) in columns {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(key))
             column.title = title; column.width = width; column.minWidth = 55
@@ -60,7 +63,7 @@ struct PartsTable: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         let coordinator = context.coordinator
         let updatedRows = rows
-        let changed = coordinator.rows != updatedRows
+        let changed = coordinator.rows != updatedRows || coordinator.parent.checkedPartIDs != checkedPartIDs
         let rowsChanged = coordinator.rows.map(\.id) != updatedRows.map(\.id)
         if rowsChanged { coordinator.closePreview() }
         coordinator.parent = self
@@ -158,6 +161,11 @@ struct PartsTable: NSViewRepresentable {
             guard rows.indices.contains(row), let key = tableColumn?.identifier.rawValue else { return nil }
             let item = rows[row]
             let part = item.part
+            if key == "check" {
+                let checked = parent.checkedPartIDs?.contains(part.id) == true
+                let action = parent.checkPart
+                return hostingCell(Toggle("Add \(part.number)", isOn: Binding(get: { checked }, set: { action?(part.id, $0) })).labelsHidden().toggleStyle(.checkbox))
+            }
             if let allocation = item.allocation {
                 if key == "designators" {
                     let save = parent.saveDesignators

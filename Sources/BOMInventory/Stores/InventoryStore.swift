@@ -266,3 +266,24 @@ import Observation
         }.sorted { $0.number.localizedStandardCompare($1.number) == .orderedAscending }
     }
 }
+
+
+extension InventoryStore {
+    /// Assign whole parts to a location without changing quantities or reservations.
+    func assignStorage(_ name: String?, partIDs: Set<String>) throws {
+        let destination: String
+        if let name {
+            guard let location = locations.first(where: { $0.name?.caseInsensitiveCompare(name) == .orderedSame }), let canonical = location.name else {
+                throw InventoryError.message("Storage no longer exists.")
+            }
+            destination = canonical
+        } else { destination = "" }
+        guard partIDs.isSubset(of: Set(parts.map(\.id))) else { throw InventoryError.message("A selected part no longer exists. Reopen bulk adding.") }
+        let updates = parts.filter { partIDs.contains($0.id) }.map { original in
+            var part = original; part.storage = destination; return part
+        }
+        guard !updates.isEmpty else { return }
+        try repository.saveImportedParts(updates)
+        try reload()
+    }
+}
