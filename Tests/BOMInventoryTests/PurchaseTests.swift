@@ -63,6 +63,45 @@ final class PurchaseTests: XCTestCase {
         XCTAssertEqual(store.requestedQuantity(store.bomEntries(for: "Board")[0]), 0)
         XCTAssertEqual(store.allocations[0].quantity, 3)
     }
+    @MainActor func testBulkAssignmentsValidateBeforeSavingAndCanChangeProject() throws {
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let store = try makeStore(path)
+        for name in ["A", "B"] { _ = try store.saveCatalog(kind: .project, originalName: nil, name: name, description: "") }
+        var one = PurchaseItem(); one.part.number = "ONE"; one.part.stock = 5
+        var two = PurchaseItem(); two.part.number = "TWO"; two.part.stock = 2
+        try store.savePurchase(one); try store.savePurchase(two)
+        let first = Allocation(partID: one.id, project: "A", quantity: 2, designators: "R1, R2")
+        let invalid = Allocation(partID: two.id, project: "A", quantity: 3)
+        XCTAssertThrowsError(try store.assignPurchaseBulk(project: "A", drafts: [first, invalid]))
+        XCTAssertTrue(store.purchases.allSatisfy { $0.assignments.isEmpty })
+        let second = Allocation(partID: two.id, project: "A", quantity: 1, designators: "U1")
+        try store.assignPurchaseBulk(project: "A", drafts: [first, second])
+        XCTAssertEqual(store.purchases.flatMap(\.assignments).count, 2)
+        XCTAssertEqual(store.purchaseSearch("R2").map(\.id), [one.id])
+        try store.editPurchaseAssignment(itemID: one.id, originalProject: "A", project: "B", quantity: 2, designators: "R1, R2")
+        XCTAssertEqual(store.purchases.first { $0.id == one.id }?.assignments.map(\.project), ["B"])
+        let reopened = try makeStore(path)
+        XCTAssertEqual(reopened.purchases.flatMap(\.assignments).count, 2)
+    }
+    @MainActor func testAPICreationAnalyzesDescriptionAndPreservesExplicitFields() throws {
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let store = try makeStore(path)
+        let router = InventoryAPIRouter(store: store)
+        let data = try JSONSerialization.data(withJSONObject: ["part": ["number": "RES", "description": "4.7kΩ ±1% 62.5mW 0402 Thick Film Resistor", "labels": ["Custom"]], "quantity": 10])
+        XCTAssertEqual(router.handle(method: "POST", target: "/v1/purchases", body: data).status, 201)
+        let part = try XCTUnwrap(store.purchases.first?.part)
+        XCTAssertEqual(part.value, "4.7kΩ")
+        XCTAssertEqual(part.tolerance, "±1%")
+        XCTAssertEqual(Set(part.labels), ["Custom", "Resistor"])
+        let explicit = try JSONSerialization.data(withJSONObject: ["part": ["number": "CAP", "description": "15pF ±1% Ceramic Capacitor", "value": "22pF", "tolerance": "5%"]])
+        XCTAssertEqual(router.handle(method: "POST", target: "/v1/purchases", body: explicit).status, 201)
+        let capacitor = try XCTUnwrap(store.purchases.first { $0.part.number == "CAP" }?.part)
+        XCTAssertEqual(capacitor.value, "22pF")
+        XCTAssertEqual(capacitor.tolerance, "5%")
+        XCTAssertTrue(capacitor.labels.contains("Capacitor"))
+    }
     @MainActor func testAPIManagesCartAndProjectPurchases() throws {
         let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
         defer { try? FileManager.default.removeItem(atPath: path) }

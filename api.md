@@ -113,6 +113,8 @@ Purchases are planned components, separate from inventory stock. An item can hav
 | PATCH | `/v1/projects/{name}/purchase/{purchaseID}` | Replace assigned quantity/designators |
 | DELETE | `/v1/projects/{name}/purchase/{purchaseID}` | Remove assignment, retaining cart item |
 
+Creating a cart item via POST runs the same **Analyze description** logic as the part editor: missing value and tolerance are filled and an inferred component label is appended. Explicit fields and existing labels are preserved.
+
 Cart POST/PATCH accepts `part` (an object with the same editable fields as the parts API, except `stock`), `quantity` (positive integer, defaults to 1), and `assignments` (array of objects with `project`, `quantity`, and optional `designators`). `part.number` is required on create. PATCH preserves omitted fields; supplied `assignments` replaces the assignment list. Use top-level `quantity` instead of `part.stock`. Responses contain `id`, `part`, `quantity`, and `assignments`; `part.stock` in these responses also represents planned quantity, not inventory stock.
 
 ```sh
@@ -138,3 +140,15 @@ Project purchase POST/PATCH uses replacement quantities. Editing designators rec
 Receiving adds each item's full planned quantity to PARTS, creates a new inventory part or merges with a single match by part number/LCSC (case-insensitive), and reserves its project-assigned quantities. Existing inventory metadata is retained when merging. The cart items are removed only after the stock and reservations commit. Multiple conflicting inventory matches reject the whole batch. Retrying already-received IDs returns an error, preventing duplicate stock. Responses return `receivedPartIDs` and `receivedPurchaseIDs`. Receiving requires actual delivery; adding/editing a cart item alone never changes stock.
 
 An unfulfilled Requested BOM entry with the same project and exact designator group is linked to the received reservation. Unrelated Requested rows are preserved. Project renames update planned assignments; project deletion removes assignments while keeping cart items.
+
+### Purchase photo upload
+
+`POST /v1/purchases` and `PATCH /v1/purchases/{id}` additionally accept optional
+`imageBase64`: a base64-encoded supported image (without a data URL prefix), up to
+600,000 decoded bytes. The API validates the image and saves its original,
+thumbnail, and preview in managed attachment storage with the purchase. Invalid
+images reject the entire save. Existing `part` fields remain unchanged; image
+filesystem paths cannot be supplied through `part`. HTTP requests retain the 1 MiB
+limit. The Chrome extension resizes photos before upload.
+
+See [Chrome extension setup](chrome-extension/README.md) for LCSC imports.

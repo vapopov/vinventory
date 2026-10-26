@@ -8,6 +8,22 @@ final class AttachmentTests: XCTestCase {
         let bitmap = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
         return try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
     }
+    @MainActor func testPurchaseAPIImageImport() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = InventoryStore(repository: try SQLiteRepository(path: ":memory:"), attachmentStorage: AttachmentStorage(root: root))
+        let router = InventoryAPIRouter(store: store)
+        let body: [String: Any] = ["part": ["number": "LCSC test", "datasheet": "https://example.com/part.pdf"], "quantity": 2, "imageBase64": try imageData().base64EncodedString()]
+        let response = router.handle(method: "POST", target: "/v1/purchases", body: try JSONSerialization.data(withJSONObject: body))
+        XCTAssertEqual(response.status, 201, String(data: response.data, encoding: .utf8) ?? "")
+        let item = try XCTUnwrap(store.purchases.first)
+        XCTAssertEqual(item.part.datasheet, "https://example.com/part.pdf")
+        let image = try XCTUnwrap(item.part.image)
+        for path in image.paths { XCTAssertTrue(FileManager.default.fileExists(atPath: path)); XCTAssertTrue(path.hasPrefix(root.path)) }
+        var invalid = body; invalid["imageBase64"] = Data("invalid image".utf8).base64EncodedString()
+        XCTAssertEqual(router.handle(method: "POST", target: "/v1/purchases", body: try JSONSerialization.data(withJSONObject: invalid)).status, 400)
+        XCTAssertEqual(store.purchases.count, 1)
+    }
     @MainActor func testAttachmentImportReplacementRemovalAndPartDeletion() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

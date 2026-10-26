@@ -25,7 +25,7 @@ import Foundation
         } else { existing = nil }
         if (path.count == 2 && method == "POST") || (path.count == 3 && method == "PATCH") {
             let input = try purchaseInput(body)
-            guard Set(input.keys).isSubset(of: ["part", "quantity", "assignments"]) else { throw APIError(400, "Use part, quantity, and assignments fields.") }
+            guard Set(input.keys).isSubset(of: ["part", "quantity", "assignments", "imageBase64"]) else { throw APIError(400, "Use part, quantity, assignments, and imageBase64 fields.") }
             var item = existing ?? PurchaseItem()
             if let value = input["part"] {
                 guard let fields = value as? [String: Any], fields["stock"] == nil else { throw APIError(400, "part must be an object; use quantity instead of part.stock.") }
@@ -40,6 +40,18 @@ import Foundation
                     assignment.quantity = input.quantity; assignment.designators = input.designators ?? ""
                     return assignment
                 }
+            }
+            let draft = AttachmentDraft()
+            defer { draft.discard() }
+            if let value = input["imageBase64"] {
+                guard store.attachmentStorage != nil else { throw APIError(400, "Attachment storage is unavailable.") }
+                guard let encoded = value as? String, let bytes = Data(base64Encoded: encoded), !bytes.isEmpty, bytes.count <= 600_000 else {
+                    throw APIError(400, "imageBase64 must contain a supported image up to 600 KB.")
+                }
+                item.part.image = try draft.importImage(data: bytes)
+            }
+            if existing == nil {
+                DescriptionAnalysis.analyze(item.part.description, valueHint: item.part.value).fillingMissing(in: &item.part)
             }
             try store.savePurchase(item)
             return try .json(purchaseObject(store.purchases.first { $0.id == item.id } ?? item), status: existing == nil ? 201 : 200)

@@ -3,6 +3,7 @@ import CSQLite
 protocol InventoryRepository {
     func loadPurchases() throws -> [PurchaseItem]
     func savePurchase(_ item: PurchaseItem) throws
+    func savePurchases(_ items: [PurchaseItem]) throws
     func deletePurchase(_ id: String) throws
     func receivePurchases(parts: [Part], allocations: [Allocation], entries: [ProjectBOMEntry], removing: [String]) throws
     func saveCatalog(kind: CatalogKind, originalName: String?, name: String, description: String) throws
@@ -168,6 +169,9 @@ final class SQLiteRepository: InventoryRepository {
     func loadPurchases() throws -> [PurchaseItem] { try load("purchases") }
     func savePurchase(_ item: PurchaseItem) throws {
         try execute("INSERT INTO purchases VALUES (?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload", values: [item.id, try json(item)])
+    }
+    func savePurchases(_ items: [PurchaseItem]) throws {
+        try transaction { for item in items { try savePurchase(item) } }
     }
     func deletePurchase(_ id: String) throws { try execute("DELETE FROM purchases WHERE id=?", values: [id]) }
     func receivePurchases(parts: [Part], allocations: [Allocation], entries: [ProjectBOMEntry], removing: [String]) throws {

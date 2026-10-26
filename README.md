@@ -79,6 +79,12 @@ Use the **API** button in the bottom-right status bar to configure and start the
 
 ## Purchase planning
 
-**PURCHASE** in the view switcher opens a cart with the same part table and detail layout as PARTS. Add/edit/delete items with the main toolbar, specify purchase quantity in the editor, and assign quantities/designators to existing projects from the detail panel. The project's **Purchase** tab lets you add/remove assignments and edit quantity/designators inline. Assigned quantities cannot exceed the cart quantity.
+**PURCHASE** in the view switcher opens a cart with the same part table and detail layout as PARTS. Add/edit/delete items with the main toolbar, specify purchase quantity in the editor, and assign quantities/designators to existing projects from the detail panel. The project's **Purchase** tab lets you add/remove assignments and edit quantity/designators inline. Bulk add shows unassigned cart items with empty editable quantities/designators; Apply saves the edited rows together and Cancel discards them. Clicking rows opens Part Preview with QR and datasheet actions. The cart assignment editor uses project autocomplete. Assigned quantities cannot exceed the cart quantity.
 
 Use **Bulk receive purchases** beside the PURCHASE title, check delivered items, and Apply to add stock to PARTS. Matches by part number or LCSC increase existing stock; new components create inventory records. Project-assigned quantities become reservations. Receipt commits stock, reservations, and cart removal in one transaction. Cancel leaves the cart unchanged. Purchase API routes are documented in [api.md](api.md).
+
+### LCSC Chrome extension
+
+The [Chrome extension](chrome-extension/README.md) imports an LCSC product into
+Purchase with a photo, datasheet link, and checkbox-selected project allocations.
+It uses the same app logo and supports a configurable local API address and port.

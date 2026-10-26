@@ -20,16 +20,15 @@ struct PurchaseAssignmentEditor: View {
     init(store: InventoryStore, draft: PurchaseAssignmentDraft) {
         self.store = store; self.draft = draft
         _itemID = State(initialValue: draft.itemID.isEmpty ? store.purchases.first?.id ?? "" : draft.itemID)
-        _project = State(initialValue: draft.project.isEmpty ? store.projects.first?.name ?? "" : draft.project)
+        _project = State(initialValue: draft.project)
         _quantity = State(initialValue: String(draft.quantity)); _designators = State(initialValue: draft.designators)
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Purchase project assignment").font(.headline)
-            Picker("Part", selection: $itemID) {
-                ForEach(store.purchases) { item in Text(item.part.number).tag(item.id) }
-            }.disabled(!draft.itemID.isEmpty)
-            Picker("Project", selection: $project) { ForEach(store.projects) { Text($0.name).tag($0.name) } }.disabled(!draft.project.isEmpty)
+            LabeledContent("Project") {
+                SuggestionField(text: $project, placeholder: "", suggestions: store.projects.map(\.name), filterOnTyping: true, choose: { project = $0 }, submit: {}).accessibilityLabel("Project name")
+            }
             TextField("Quantity", text: $quantity)
             TextField("Designators", text: $designators).onChange(of: designators) { _, value in
                 if let count = try? Designators.quantity(in: value) { quantity = String(count) }
@@ -41,11 +40,11 @@ struct PurchaseAssignmentEditor: View {
                 Button("Save") {
                     do {
                         guard let count = Int(quantity), count > 0 else { throw InventoryError.message("Enter a positive quantity.") }
-                        try store.savePurchaseAssignment(itemID: itemID, project: project, quantity: count, designators: designators)
+                        try store.editPurchaseAssignment(itemID: itemID, originalProject: draft.project.isEmpty ? nil : draft.project, project: project, quantity: count, designators: designators)
                         dismiss()
                     } catch { self.error = error.localizedDescription }
                 }.disabled(itemID.isEmpty || project.isEmpty).keyboardShortcut(.defaultAction)
             }.buttonStyle(ProjectBOMActionStyle())
-        }.padding(24).frame(width: 460).textFieldStyle(.roundedBorder).background(Theme.panel)
+        }.padding(24).frame(width: 460).textFieldStyle(.roundedBorder).background(Theme.panel).suggestionOverlay()
     }
 }

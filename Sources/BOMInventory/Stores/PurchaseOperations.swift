@@ -5,7 +5,7 @@ extension InventoryStore {
         let words = query.lowercased().split(whereSeparator: \.isWhitespace)
         return purchases.filter { item in
             let p = item.part
-            let fields = ([p.number, p.manufacturer, p.lcsc, p.description, p.package, p.value, p.tolerance, p.barcode] + p.labels + item.assignments.map(\.project)).joined(separator: " ").lowercased()
+            let fields = ([p.number, p.manufacturer, p.lcsc, p.description, p.package, p.value, p.tolerance, p.barcode] + p.labels + item.assignments.flatMap { [$0.project, $0.designators] }).joined(separator: " ").lowercased()
             return words.allSatisfy { fields.contains($0) }
         }.sorted { $0.part.number.localizedStandardCompare($1.part.number) == .orderedAscending }
     }
@@ -50,6 +50,33 @@ extension InventoryStore {
             item.assignments[index].quantity = count; item.assignments[index].designators = designators
         } else { item.assignments.append(PurchaseAssignment(project: project, quantity: count, designators: designators)) }
         try savePurchase(item)
+    }
+    func editPurchaseAssignment(itemID: String, originalProject: String?, project: String, quantity: Int, designators: String) throws {
+        guard var item = purchases.first(where: { $0.id == itemID }) else { throw InventoryError.message("Purchase item not found.") }
+        let name = project.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let originalProject, let index = item.assignments.firstIndex(where: { $0.project.caseInsensitiveCompare(originalProject) == .orderedSame }) {
+            item.assignments[index].project = name
+            item.assignments[index].quantity = quantity
+            item.assignments[index].designators = designators
+            try savePurchase(item)
+        } else { try savePurchaseAssignment(itemID: itemID, project: name, quantity: quantity, designators: designators) }
+    }
+    func assignPurchaseBulk(project: String, drafts: [Allocation]) throws {
+        guard let catalog = projects.first(where: { $0.name.caseInsensitiveCompare(project) == .orderedSame }) else { throw InventoryError.message("Project no longer exists.") }
+        var updates: [PurchaseItem] = []
+        var seen = Set<String>()
+        for draft in drafts where draft.quantity != 0 || !draft.designators.isEmpty {
+            guard var item = purchases.first(where: { $0.id == draft.partID }), seen.insert(draft.partID).inserted,
+                  !item.assignments.contains(where: { $0.project.caseInsensitiveCompare(catalog.name) == .orderedSame }) else {
+                throw InventoryError.message("A purchase item is missing or already assigned. Cancel bulk adding and refresh.")
+            }
+            item.assignments.append(PurchaseAssignment(project: catalog.name, quantity: draft.quantity, designators: draft.designators))
+            try validatePurchase(item)
+            updates.append(item)
+        }
+        guard !updates.isEmpty else { return }
+        try repository.savePurchases(updates)
+        try reload()
     }
     func removePurchaseAssignment(itemID: String, project: String) throws {
         guard var item = purchases.first(where: { $0.id == itemID }) else { throw InventoryError.message("Purchase item not found.") }
