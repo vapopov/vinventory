@@ -16,7 +16,7 @@ struct APIResponse {
         catch let error as APIError { return (try? .json(["error": error.message], status: error.status)) ?? APIResponse(status: 500, data: Data()) }
         catch { return (try? .json(["error": error.localizedDescription], status: 400)) ?? APIResponse(status: 500, data: Data()) }
     }
-    private func object<T: Encodable>(_ value: T) throws -> Any { try JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) }
+    func object<T: Encodable>(_ value: T) throws -> Any { try JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) }
     private func route(method: String, target: String, body: Data) throws -> APIResponse {
         guard let url = URLComponents(string: target), target.hasPrefix("/") else { throw APIError(400, "Invalid request target.") }
         let path = url.percentEncodedPath.split(separator: "/").map { String($0).removingPercentEncoding ?? String($0) }
@@ -30,6 +30,7 @@ struct APIResponse {
             guard let value = data[key] else { return fallback }
             guard let text = value as? String else { throw APIError(400, "\(key) must be a string.") }; return text
         }
+        if path[1] == "purchases" { return try purchaseRoute(method: method, path: path, body: body, query: url.queryItems?.first { $0.name == "q" }?.value ?? "") }
         if path[1] == "parts" {
             if path.count == 2 {
                 if method == "GET" {
@@ -74,6 +75,9 @@ struct APIResponse {
                     return try .json(["name": name])
                 }
                 if method == "DELETE" { try store.deleteCatalog(kind: .project, name: project.name); return try .json(["deleted": project.name]) }
+            }
+            if path.count >= 4, path[3] == "purchase" {
+                return try projectPurchaseRoute(method: method, path: path, body: body, project: project.name)
             }
             if path.count >= 4, path[3] == "allocations" {
                 if path.count == 4 {
@@ -123,11 +127,11 @@ struct APIResponse {
         }
         throw APIError(405, "Method or route not supported.")
     }
-    private func integer(_ data: [String: Any], _ key: String) throws -> Int {
+    func integer(_ data: [String: Any], _ key: String) throws -> Int {
         guard let number = data[key] as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(), number.doubleValue.isFinite, number.doubleValue.rounded() == number.doubleValue, number.doubleValue > 0, number.doubleValue < Double(Int.max) else { throw APIError(400, "\(key) must be a positive integer.") }
         return number.intValue
     }
-    private func mergePart(_ part: Part, changes: [String: Any]) throws -> Part {
+    func mergePart(_ part: Part, changes: [String: Any]) throws -> Part {
         let allowed: Set<String> = ["number", "manufacturer", "lcsc", "description", "package", "value", "tolerance", "stock", "storage", "datasheet", "labels", "customFields", "barcode"]
         guard Set(changes.keys).isSubset(of: allowed) else { throw APIError(400, "Unknown or read-only part field.") }
         var data = try object(part) as! [String: Any]
@@ -138,4 +142,4 @@ struct APIResponse {
         return try JSONDecoder().decode(Part.self, from: JSONSerialization.data(withJSONObject: data))
     }
 }
-private struct APIError: Error { let status: Int; let message: String; init(_ status: Int, _ message: String) { self.status = status; self.message = message } }
+struct APIError: Error { let status: Int; let message: String; init(_ status: Int, _ message: String) { self.status = status; self.message = message } }

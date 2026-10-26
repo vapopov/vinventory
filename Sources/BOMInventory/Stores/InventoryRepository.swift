@@ -1,6 +1,10 @@
 import Foundation
 import CSQLite
 protocol InventoryRepository {
+    func loadPurchases() throws -> [PurchaseItem]
+    func savePurchase(_ item: PurchaseItem) throws
+    func deletePurchase(_ id: String) throws
+    func receivePurchases(parts: [Part], allocations: [Allocation], entries: [ProjectBOMEntry], removing: [String]) throws
     func saveCatalog(kind: CatalogKind, originalName: String?, name: String, description: String) throws
     func deleteCatalog(kind: CatalogKind, name: String) throws
     func loadProjectBOMEntries() throws -> [ProjectBOMEntry]
@@ -35,6 +39,7 @@ final class SQLiteRepository: InventoryRepository {
         try execute("CREATE TABLE IF NOT EXISTS field_values (field TEXT NOT NULL, name TEXT NOT NULL COLLATE NOCASE, last_used INTEGER NOT NULL, PRIMARY KEY(field, name))")
         try execute("CREATE TABLE IF NOT EXISTS storage_descriptions (name TEXT PRIMARY KEY COLLATE NOCASE, description TEXT NOT NULL)")
         try execute("CREATE TABLE IF NOT EXISTS projects (name TEXT PRIMARY KEY COLLATE NOCASE, description TEXT NOT NULL)")
+        try execute("CREATE TABLE IF NOT EXISTS purchases (id TEXT PRIMARY KEY, payload TEXT NOT NULL)")
         try execute("CREATE TABLE IF NOT EXISTS project_bom_entries (id TEXT PRIMARY KEY, payload TEXT NOT NULL)")
         for allocation in try loadAllocations() { try ensureProject(allocation.project) }
         // Older payloads decode their Type into labels; seed the persistent catalog once.
@@ -54,7 +59,7 @@ final class SQLiteRepository: InventoryRepository {
         }
         for label in DescriptionAnalysis.builtInLabels { try execute("INSERT OR IGNORE INTO labels VALUES (?, 0)", values: [label]) }
         try pruneUnusedSuggestions()
-        try execute("PRAGMA user_version = 8")
+        try execute("PRAGMA user_version = 9")
     }
     deinit { sqlite3_close(db) }
     private func execute(_ sql: String, values: [String] = []) throws {
@@ -160,6 +165,19 @@ final class SQLiteRepository: InventoryRepository {
     func registerLabel(_ name: String) throws {
         try execute("INSERT INTO labels(name,last_used) VALUES (?, (SELECT COALESCE(MAX(last_used),0)+1 FROM labels)) ON CONFLICT(name) DO UPDATE SET last_used=excluded.last_used", values: [name])
     }
+    func loadPurchases() throws -> [PurchaseItem] { try load("purchases") }
+    func savePurchase(_ item: PurchaseItem) throws {
+        try execute("INSERT INTO purchases VALUES (?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload", values: [item.id, try json(item)])
+    }
+    func deletePurchase(_ id: String) throws { try execute("DELETE FROM purchases WHERE id=?", values: [id]) }
+    func receivePurchases(parts: [Part], allocations: [Allocation], entries: [ProjectBOMEntry], removing: [String]) throws {
+        try transaction {
+            try saveImportedPartsContents(parts)
+            for allocation in allocations { try writeAllocation(allocation) }
+            for entry in entries { try execute("INSERT INTO project_bom_entries VALUES (?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload", values: [entry.id, try json(entry)]) }
+            for id in removing { try deletePurchase(id) }
+        }
+    }
     func loadProjectBOMEntries() throws -> [ProjectBOMEntry] { try load("project_bom_entries") }
     func saveProjectBOM(entries: [ProjectBOMEntry], allocations: [Allocation], removing: [String], removingEntries: [String]) throws {
         try transaction {
@@ -175,15 +193,16 @@ final class SQLiteRepository: InventoryRepository {
         if !part.storage.isEmpty { try execute("INSERT OR IGNORE INTO storage_descriptions VALUES (?, '')", values: [part.storage]) }
         try execute("INSERT INTO parts VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET barcode=excluded.barcode,payload=excluded.payload", values: [part.id, part.barcode, try json(part)]) }
     func saveImportedParts(_ parts: [Part]) throws {
-        try transaction {
-            for part in parts {
-                try save(part)
-                for field in RecentField.allCases {
-                    let value = field.value(in: part)
-                    if !value.isEmpty { try registerSuggestion(value, for: field) }
-                }
-                for label in part.labels { try registerLabel(label) }
+        try transaction { try saveImportedPartsContents(parts) }
+    }
+    private func saveImportedPartsContents(_ parts: [Part]) throws {
+        for part in parts {
+            try save(part)
+            for field in RecentField.allCases {
+                let value = field.value(in: part)
+                if !value.isEmpty { try registerSuggestion(value, for: field) }
             }
+            for label in part.labels { try registerLabel(label) }
         }
     }
     private func transaction(_ operation: () throws -> Void) throws {
@@ -197,6 +216,10 @@ final class SQLiteRepository: InventoryRepository {
             if let originalName {
                 try execute("UPDATE \(table) SET name=?, description=? WHERE name=?", values: [name, description, originalName])
                 if kind == .project {
+                    for var purchase in try loadPurchases() {
+                        for index in purchase.assignments.indices where purchase.assignments[index].project.caseInsensitiveCompare(originalName) == .orderedSame { purchase.assignments[index].project = name }
+                        try savePurchase(purchase)
+                    }
                     for var entry in try loadProjectBOMEntries() where entry.project.caseInsensitiveCompare(originalName) == .orderedSame {
                         entry.project = name
                         try execute("UPDATE project_bom_entries SET payload=? WHERE id=?", values: [try json(entry), entry.id])
@@ -218,6 +241,10 @@ final class SQLiteRepository: InventoryRepository {
     func deleteCatalog(kind: CatalogKind, name: String) throws {
         try transaction {
             if kind == .project {
+                for var purchase in try loadPurchases() {
+                    purchase.assignments.removeAll { $0.project.caseInsensitiveCompare(name) == .orderedSame }
+                    try savePurchase(purchase)
+                }
                 for entry in try loadProjectBOMEntries() where entry.project.caseInsensitiveCompare(name) == .orderedSame { try execute("DELETE FROM project_bom_entries WHERE id=?", values: [entry.id]) }
                 for allocation in try loadAllocations() where allocation.project.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(name) == .orderedSame {
                     try delete(allocation)

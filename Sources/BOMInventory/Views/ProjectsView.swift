@@ -12,6 +12,7 @@ struct ProjectsView: View {
     var showPart: (Part) -> Void
     @State private var bomImport: ProjectBOMImport?
     @State private var requestedTab = false
+    @State private var purchaseTab = false
     @State private var bulkAdding = false
     @State private var bulkDrafts: [String: Allocation] = [:]
     @State private var allocationSelection: String?
@@ -36,6 +37,14 @@ struct ProjectsView: View {
             .sorted { $0.number.localizedStandardCompare($1.number) == .orderedAscending }
             .map { bulkDrafts[$0.id] ?? Allocation(id: $0.id, partID: $0.id, project: project.name, quantity: 0) }
     }
+    private var headerUnits: Int {
+        guard let project else { return 0 }
+        if purchaseTab {
+            return store.purchases.flatMap(\.assignments).filter { $0.project.caseInsensitiveCompare(project.name) == .orderedSame }.reduce(0) { $0 + $1.quantity }
+        }
+        if requestedTab { return store.bomEntries(for: project.name).reduce(0) { $0 + store.requestedQuantity($1) } }
+        return (bulkAdding ? Array(bulkDrafts.values) : matching).reduce(0) { $0 + $1.quantity }
+    }
     private var pendingCount: Int { bulkDrafts.values.filter { $0.quantity != 0 || !$0.designators.isEmpty }.count }
     private var pages: Int { max(1, (displayed.count + pageSize - 1) / pageSize) }
     private var rowSelection: Binding<String?> {
@@ -54,11 +63,12 @@ struct ProjectsView: View {
                         Button(action: toggleBulkAdding) {
                             Image(systemName: bulkAdding ? "checkmark" : "plus.square.on.square").font(.system(size: 12, weight: .semibold)).frame(width: 26, height: 26)
                         }.buttonStyle(.plain).foregroundStyle(Theme.yellow).help(bulkAdding ? "Apply bulk allocations" : "Bulk add parts")
-                            .accessibilityLabel(bulkAdding ? "Apply bulk allocations" : "Bulk add parts").disabled(bomImport != nil || requestedTab)
+                            .accessibilityLabel(bulkAdding ? "Apply bulk allocations" : "Bulk add parts").disabled(bomImport != nil || requestedTab || purchaseTab)
                         Button(action: chooseProjectBOM) { Image(systemName: "arrow.down.to.line").font(.system(size: 12, weight: .semibold)).frame(width: 26, height: 26) }
                             .buttonStyle(.plain).foregroundStyle(Theme.yellow).help("Import project BOM").accessibilityLabel("Import project BOM").disabled(bulkAdding || bomImport != nil)
-                        Button("Allocated") { requestedTab = false }.buttonStyle(ProjectBOMTabStyle(selected: !requestedTab)).disabled(bomImport != nil || bulkAdding)
-                        Button("Requested") { requestedTab = true }.buttonStyle(ProjectBOMTabStyle(selected: requestedTab)).disabled(bomImport != nil || bulkAdding)
+                        Button("Allocated") { requestedTab = false; purchaseTab = false }.buttonStyle(ProjectBOMTabStyle(selected: !requestedTab && !purchaseTab)).disabled(bomImport != nil || bulkAdding)
+                        Button("Requested") { requestedTab = true; purchaseTab = false }.buttonStyle(ProjectBOMTabStyle(selected: requestedTab)).disabled(bomImport != nil || bulkAdding)
+                        Button("Purchase") { requestedTab = false; purchaseTab = true }.buttonStyle(ProjectBOMTabStyle(selected: purchaseTab)).disabled(bomImport != nil || bulkAdding)
                         if requestedTab && bomImport == nil {
                             Button(action: exportRequested) { Image(systemName: "arrow.up.to.line").frame(width: 26, height: 26) }
                                 .buttonStyle(.plain).foregroundStyle(Theme.yellow).help("Export requested BOM as CSV").accessibilityLabel("Export requested BOM")
@@ -69,10 +79,12 @@ struct ProjectsView: View {
                             Text("\(pendingCount) pending").font(.caption).foregroundStyle(Theme.muted)
                         }
                         Spacer()
-                        Text("\((bulkAdding ? Array(bulkDrafts.values) : matching).reduce(0) { $0 + $1.quantity }.formatted()) units").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        Text("\(headerUnits.formatted()) units").font(.system(size: 12)).foregroundStyle(Theme.muted)
                     }.padding(.horizontal, 14).frame(height: 40).background(Theme.raised)
                     if let review = bomImport {
                         ProjectBOMImportView(document: review, project: project.name, store: store, finish: { bomImport = nil }, editPart: editPart, showPart: showPart).id(review.id)
+                    } else if purchaseTab {
+                        ProjectPurchasesView(store: store, project: project.name, query: query).id(project.id)
                     } else if requestedTab {
                         ProjectRequestsView(store: store, project: project.name, query: query)
                     } else {
@@ -114,7 +126,7 @@ struct ProjectsView: View {
         } message: { Text("All allocations in this project will be released back to available stock.") }
         .onAppear { reconcileSelection() }
         .onChange(of: store.projects.map(\.id)) { _, _ in reconcileSelection() }
-        .onChange(of: projectSelection) { _, _ in page = 0; allocationSelection = nil; partSelection = nil; cancelBulkAdding(); bomImport = nil; requestedTab = false }
+        .onChange(of: projectSelection) { _, _ in page = 0; allocationSelection = nil; partSelection = nil; cancelBulkAdding(); bomImport = nil; requestedTab = false; purchaseTab = false }
         .onChange(of: query) { _, _ in page = 0 }
         .onChange(of: pageSize) { _, _ in page = 0 }
         .onChange(of: displayed.map(\.id)) { _, ids in

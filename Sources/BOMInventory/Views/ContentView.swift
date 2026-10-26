@@ -30,7 +30,7 @@ struct ContentView: View {
             }
         }
     }
-    private var selected: Part? { store.parts.first { $0.id == selection } }
+    private var selected: Part? { (section == .purchase ? store.purchases.map(\.part) : store.parts).first { $0.id == selection } }
     private var pages: Int { max(1, (results.count + pageSize - 1) / pageSize) }
     private var visible: [Part] { Array(results.dropFirst(page * pageSize).prefix(pageSize)) }
     var body: some View {
@@ -50,6 +50,8 @@ struct ContentView: View {
                         EmptyState(title: store.parts.isEmpty ? "Your inventory starts here" : "Select a part", subtitle: store.parts.isEmpty ? "Add your first component to track stock, storage, and project allocations." : "Select a row to view its details and manage inventory.").frame(minWidth: 440)
                     }
                 }
+            } else if section == .purchase {
+                PurchaseView(store: store, query: query, selection: $selection, edit: { editor = $0 })
             } else if section == .storage {
                 StorageView(store: store, parts: results, locationSelection: $storageSelection, partSelection: $selection, editPart: { editor = $0 }, showPart: navigateToPart)
             } else {
@@ -67,8 +69,17 @@ struct ContentView: View {
         .sheet(isPresented: $cameraScanning) {
             CameraBarcodeScanner { code in barcodeQuery = code; section = .parts; importDocument = nil; findBarcode() }
         }
-        .sheet(item: $editor) { part in PartEditor(part: part, store: store) { updated in try store.save(updated, recordFieldUse: true); selection = updated.id } }
-        .alert("Delete part?", isPresented: $deleting) { Button("Cancel", role: .cancel) {}; Button("Delete", role: .destructive) { if let selected { store.perform { try store.delete(selected) }; selection = nil } } } message: { Text("The selected part and its project allocations will be permanently removed.") }
+        .sheet(item: $editor) { part in
+            PartEditor(part: part, store: store, purchaseMode: section == .purchase) { updated in
+                if section == .purchase {
+                    var item = store.purchases.first { $0.id == updated.id } ?? PurchaseItem()
+                    item.part = updated
+                    try store.savePurchase(item)
+                } else { try store.save(updated, recordFieldUse: true) }
+                selection = updated.id
+            }
+        }
+        .alert("Delete part?", isPresented: $deleting) { Button("Cancel", role: .cancel) {}; Button("Delete", role: .destructive) { if let selected { store.perform { if section == .purchase, let item = store.purchases.first(where: { $0.id == selected.id }) { try store.deletePurchase(item) } else { try store.delete(selected) } }; selection = nil } } } message: { Text(section == .purchase ? "Remove this item and its planned project assignments from the purchase cart." : "The selected part and its project allocations will be permanently removed.") }
         .alert("Inventory error", isPresented: Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })) { Button("OK") { store.error = nil } } message: { Text(store.error ?? "") }
         .onChange(of: query) { _, _ in page = 0 }
         .onChange(of: labelFilters) { _, _ in page = 0 }
@@ -78,13 +89,14 @@ struct ContentView: View {
     private var toolbar: some View {
         HStack(spacing: 5) {
             ViewSwitcher(selection: Binding(get: { section }, set: { section = $0; selection = nil; importDocument = nil }))
-            ToolButton(symbol: "plus", title: "Add part (⌘N)") {
+            ToolButton(symbol: "plus", title: section == .purchase ? "Add purchase (⌘N)" : "Add part (⌘N)") {
                 var part = Part()
+                if section == .purchase { part.stock = 1 }
                 if section == .storage { part.storage = store.locations.first { $0.id == storageSelection }?.name ?? "" }
                 editor = part
             }.keyboardShortcut("n")
-            ToolButton(symbol: "pencil", title: "Edit selected part (⌘E)") { editor = selected }.disabled(selected == nil).keyboardShortcut("e")
-            ToolButton(symbol: "trash", title: "Delete selected part") { deleting = true }.disabled(selected == nil)
+            ToolButton(symbol: "pencil", title: section == .purchase ? "Edit selected purchase (⌘E)" : "Edit selected part (⌘E)") { editor = selected }.disabled(selected == nil).keyboardShortcut("e")
+            ToolButton(symbol: "trash", title: section == .purchase ? "Delete selected purchase" : "Delete selected part") { deleting = true }.disabled(selected == nil)
             if section == .parts {
                 Button { showingLabelFilters.toggle() } label: {
                     HStack(spacing: 4) {
@@ -104,7 +116,7 @@ struct ContentView: View {
                 if !query.isEmpty { Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.muted) }.buttonStyle(.plain) }
             }.padding(.horizontal, 10).frame(height: 34).background(Theme.raised)
             ToolButton(symbol: "barcode.viewfinder", title: "Scan barcode with camera") { cameraScanning = true }
-            ToolButton(symbol: "arrow.down.to.line", title: "Import parts from CSV") { chooseImportFile() }.disabled(importDocument != nil)
+            ToolButton(symbol: "arrow.down.to.line", title: "Import parts from CSV") { chooseImportFile() }.disabled(importDocument != nil || section == .purchase)
             Image(nsImage: AppBrand.icon).resizable().interpolation(.high).scaledToFit().frame(width: 34, height: 34).padding(.leading, 8).accessibilityLabel("BOM Inventory logo")
         }.padding(.horizontal, 10).frame(height: 52).background(Theme.background)
     }

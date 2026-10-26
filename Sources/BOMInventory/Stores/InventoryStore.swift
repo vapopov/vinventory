@@ -1,9 +1,10 @@
 import Foundation
 import Observation
 @MainActor @Observable final class InventoryStore {
-    private let repository: InventoryRepository
-    private let attachmentStorage: AttachmentStorage?
+    let repository: InventoryRepository
+    let attachmentStorage: AttachmentStorage?
     var parts: [Part] = []
+    var purchases: [PurchaseItem] = []
     var allocations: [Allocation] = []
     var projects: [Project] = []
     var projectBOMEntries: [ProjectBOMEntry] = []
@@ -22,6 +23,7 @@ import Observation
     func reload() throws {
         try repository.pruneUnusedSuggestions()
         parts = try repository.loadParts()
+        purchases = try repository.loadPurchases()
         if let attachmentStorage {
             for index in parts.indices {
                 let upgraded = try attachmentStorage.ensurePreview(for: parts[index])

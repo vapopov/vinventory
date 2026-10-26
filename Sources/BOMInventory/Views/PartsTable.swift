@@ -7,6 +7,7 @@ struct PartsTable: NSViewRepresentable {
     var allocations: [Allocation]? = nil
     var rowNumberOffset = 0
     var draftMode = false
+    var stockColumnTitle = "Stock Balance"
     var checkedPartIDs: Set<String>? = nil
     var doubleClick: ((Part) -> Void)? = nil
     var checkPart: ((String, Bool) -> Void)? = nil
@@ -49,7 +50,7 @@ struct PartsTable: NSViewRepresentable {
         table.doubleAction = #selector(Coordinator.rowDoubleClicked(_:))
         scroll.contentView.postsBoundsChangedNotifications = true
         context.coordinator.observeScrolling(scroll.contentView)
-        var columns: [(String, String, CGFloat)] = [("number", "Part Number", 160), ("manufacturer", "Manufacturer", 150), ("lcsc", "LCSC", 100), ("description", "Description", 220), ("package", "Package", 90), ("value", "Value", 80), ("tolerance", "Tolerance", 85), ("stock", "Stock Balance", 110), ("storage", "Storage", 120)]
+        var columns: [(String, String, CGFloat)] = [("number", "Part Number", 160), ("manufacturer", "Manufacturer", 150), ("lcsc", "LCSC", 100), ("description", "Description", 220), ("package", "Package", 90), ("value", "Value", 80), ("tolerance", "Tolerance", 85), ("stock", stockColumnTitle, 110), ("storage", "Storage", 120)]
         if allocations != nil { columns.insert(contentsOf: [("rowNumber", "#", 40), ("designators", "Designators", 180), ("quantity", "Qty", 65)] + (draftMode ? [] : [("release", "", 80)]), at: 0) }
         if checkedPartIDs != nil { columns.insert(("check", "Add", 45), at: 0) }
         for (key, title, width) in columns {

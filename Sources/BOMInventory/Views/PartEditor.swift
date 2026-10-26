@@ -3,21 +3,23 @@ struct PartEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var part: Part
     var store: InventoryStore
+    var purchaseMode: Bool
     @State private var customFields: [CustomFieldDraft]
     @State private var labelDraft = ""
     var save: (Part) throws -> Void
     @State private var error: String?
     @State private var attachmentDraft = AttachmentDraft()
     @State private var downloadingDatasheet = false
-    init(part: Part, store: InventoryStore, save: @escaping (Part) throws -> Void) {
+    init(part: Part, store: InventoryStore, purchaseMode: Bool = false, save: @escaping (Part) throws -> Void) {
         _part = State(initialValue: part)
         _customFields = State(initialValue: part.customFields.sorted { $0.key < $1.key }.map { CustomFieldDraft(name: $0.key, value: $0.value) })
         self.save = save
         self.store = store
+        self.purchaseMode = purchaseMode
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            HStack { Text("Part details").font(.title2.bold()); Spacer(); Image(systemName: "cpu").foregroundStyle(Theme.yellow) }
+            HStack { Text(purchaseMode ? "Purchase details" : "Part details").font(.title2.bold()); Spacer(); Image(systemName: "cpu").foregroundStyle(Theme.yellow) }
             ScrollView {
                 Form {
                     LabeledContent("Image") { PartImageEditor(image: $part.image, draft: attachmentDraft) }
@@ -54,7 +56,7 @@ struct PartEditor: View {
                         SuggestionField(text: $part.storage, placeholder: "", suggestions: store.storageSuggestions, filterOnTyping: true, choose: { part.storage = $0 }, submit: {}).accessibilityLabel("Storage")
                             .help("Choose a recent storage location or type a new one.")
                     }
-                    TextField("Stock", value: $part.stock, format: .number)
+                    TextField(purchaseMode ? "Quantity to purchase" : "Stock", value: $part.stock, format: .number)
                     LabeledContent("Datasheet") { DatasheetEditor(value: $part.datasheet, downloading: $downloadingDatasheet, draft: attachmentDraft) }
                     CustomFieldsEditor(fields: $customFields)
                     LabeledContent("Barcode") { Text(part.barcode).font(.system(size: 10, design: .monospaced)).textSelection(.enabled) }
@@ -63,7 +65,7 @@ struct PartEditor: View {
                     .padding(.vertical, 4)
             }.frame(maxHeight: 540)
             if let error { Text(error).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
-            HStack { Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction); Button("Save part") { do {
+            HStack { Spacer(); Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction); Button(purchaseMode ? "Save purchase" : "Save part") { do {
                 if !labelDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { try commitLabel(labelDraft) }
                 part.customFields = try CustomFieldDraft.dictionary(customFields)
                 try save(part); dismiss()

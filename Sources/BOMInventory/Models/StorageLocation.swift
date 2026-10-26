@@ -16,4 +16,5 @@ enum InventorySection: String, CaseIterable {
     case parts = "PARTS"
     case storage = "STORAGE"
     case projects = "PROJECTS"
+    case purchase = "PURCHASE"
 }
