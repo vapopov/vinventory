@@ -5,9 +5,9 @@ struct BarcodePopover: View {
     @State private var copied = false
     var body: some View {
         VStack(spacing: 10) {
-            if let image = try? BarcodeLabel.image(for: part) { Image(nsImage: image).resizable().interpolation(.none).aspectRatio(contentMode: .fit).frame(width: 540, height: 169) }
+            if let image = try? BarcodeLabel.image(for: part) { Image(nsImage: image).resizable().interpolation(.none).aspectRatio(contentMode: .fit).frame(width: 400, height: 240) }
             HStack(spacing: 12) {
-                Text("Detailed label").foregroundStyle(.white)
+                Text("50 × 30 mm • 300 dpi").foregroundStyle(.white)
                 Spacer()
                 Button("PNG") { perform { try BarcodeLabel.export(part, pdf: false) } }
                 Button("PDF") { perform { try BarcodeLabel.export(part, pdf: true) } }

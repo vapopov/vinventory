@@ -35,7 +35,7 @@ struct ContentView: View {
             } else if section == .parts {
                 HSplitView {
                     VStack(spacing: 0) {
-                        PartsTable(parts: visible, selection: $selection)
+                        PartsTable(parts: visible, selection: $selection, doubleClick: { editor = $0 })
                         PaginationBar(count: results.count, page: $page, pageSize: $pageSize)
                     }.frame(minWidth: 630, idealWidth: 930)
                     if let selected {

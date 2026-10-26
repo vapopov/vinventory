@@ -8,6 +8,7 @@ struct PartsTable: NSViewRepresentable {
     var rowNumberOffset = 0
     var draftMode = false
     var checkedPartIDs: Set<String>? = nil
+    var doubleClick: ((Part) -> Void)? = nil
     var checkPart: ((String, Bool) -> Void)? = nil
     var saveDesignators: ((Allocation, String) throws -> Void)? = nil
     var saveQuantity: ((Allocation, String) throws -> Void)? = nil
@@ -45,6 +46,7 @@ struct PartsTable: NSViewRepresentable {
         table.rowSizeStyle = .custom
         table.target = context.coordinator
         table.action = #selector(Coordinator.rowClicked(_:))
+        table.doubleAction = #selector(Coordinator.rowDoubleClicked(_:))
         scroll.contentView.postsBoundsChangedNotifications = true
         context.coordinator.observeScrolling(scroll.contentView)
         var columns: [(String, String, CGFloat)] = [("number", "Part Number", 160), ("manufacturer", "Manufacturer", 150), ("lcsc", "LCSC", 100), ("description", "Description", 220), ("package", "Package", 90), ("value", "Value", 80), ("tolerance", "Tolerance", 85), ("stock", "Stock Balance", 110), ("storage", "Storage", 120)]
@@ -99,6 +101,13 @@ struct PartsTable: NSViewRepresentable {
             guard rows.indices.contains(sender.clickedRow) else { return }
             if sender.clickedColumn >= 0, ["designators", "quantity", "release"].contains(sender.tableColumns[sender.clickedColumn].identifier.rawValue) { return }
             showPreview(row: sender.clickedRow)
+        }
+        @objc func rowDoubleClicked(_ sender: NSTableView) {
+            guard rows.indices.contains(sender.clickedRow), let edit = parent.doubleClick else { return }
+            closePreview()
+            let row = rows[sender.clickedRow]
+            parent.selection = row.id
+            edit(row.part)
         }
         private func previewCell(id: String) {
             guard let table, let row = rows.firstIndex(where: { $0.id == id }) else { return }
