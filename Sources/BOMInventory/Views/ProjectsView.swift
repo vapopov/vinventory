@@ -66,9 +66,11 @@ struct ProjectsView: View {
                             .accessibilityLabel(bulkAdding ? "Apply bulk allocations" : "Bulk add parts").disabled(bomImport != nil || requestedTab || purchaseTab)
                         Button(action: chooseProjectBOM) { Image(systemName: "arrow.down.to.line").font(.system(size: 12, weight: .semibold)).frame(width: 26, height: 26) }
                             .buttonStyle(.plain).foregroundStyle(Theme.yellow).help("Import project BOM").accessibilityLabel("Import project BOM").disabled(bulkAdding || bomImport != nil)
+                        HStack(spacing: 0) {
                         Button("Allocated") { requestedTab = false; purchaseTab = false }.buttonStyle(ProjectBOMTabStyle(selected: !requestedTab && !purchaseTab)).disabled(bomImport != nil || bulkAdding)
                         Button("Requested") { requestedTab = true; purchaseTab = false }.buttonStyle(ProjectBOMTabStyle(selected: requestedTab)).disabled(bomImport != nil || bulkAdding)
                         Button("Purchase") { requestedTab = false; purchaseTab = true }.buttonStyle(ProjectBOMTabStyle(selected: purchaseTab)).disabled(bomImport != nil || bulkAdding)
+                        }
                         if requestedTab && bomImport == nil {
                             Button(action: exportRequested) { Image(systemName: "arrow.up.to.line").frame(width: 26, height: 26) }
                                 .buttonStyle(.plain).foregroundStyle(Theme.yellow).help("Export requested BOM as CSV").accessibilityLabel("Export requested BOM")

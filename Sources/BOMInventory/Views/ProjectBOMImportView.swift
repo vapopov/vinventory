@@ -119,11 +119,10 @@ struct ProjectBOMTabStyle: ButtonStyle {
     var selected: Bool
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(selected ? Color.black : Color.white)
-            .padding(.horizontal, 18).padding(.vertical, 8)
-            .background(selected ? Theme.yellow.opacity(configuration.isPressed ? 0.7 : 1) : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 3))
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(selected ? Color.white : Theme.yellow)
+            .padding(.horizontal, 14).frame(height: 40)
+            .background(selected ? Theme.purple.opacity(configuration.isPressed ? 0.8 : 1) : Color.clear)
             .contentShape(Rectangle())
     }
 }
