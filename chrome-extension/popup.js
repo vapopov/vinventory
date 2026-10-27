@@ -1,13 +1,19 @@
 const $ = id => document.getElementById(id);
 const keys = ['number', 'manufacturer', 'lcsc', 'description', 'package', 'value', 'tolerance', 'datasheet', 'price'];
-const titles = ['Part number', 'Manufacturer', 'LCSC number', 'Description', 'Package', 'Value', 'Tolerance', 'Datasheet URL', 'LCSC price (currency / unit or quantity tiers)'];
+const titles = ['Part number', 'Manufacturer', 'LCSC number', 'Description', 'Package', 'Value', 'Tolerance', 'Datasheet URL', 'LCSC unit price'];
 let base = '', loaded = false, imported = false;
+let scrapedPrices = '', singleUnitPrice = '', manualPrice = false;
+function updatePrice() {
+  if (!manualPrice) $('price').value = priceForQuantity(scrapedPrices, Number($('quantity').value), singleUnitPrice);
+}
 for (const [i, key] of keys.entries()) {
   const label = document.createElement('label'); label.textContent = titles[i];
   const input = document.createElement('input'); input.id = key; input.required = key === 'number';
   if (key === 'datasheet') input.type = 'url';
   label.append(input); $('fields').append(label);
 }
+$('quantity').addEventListener('input', updatePrice);
+$('price').addEventListener('input', () => { manualPrice = true; });
 const status = message => { $('status').textContent = message; };
 $('purchase').addEventListener('invalid', event => { status(`Check ${event.target.closest('label')?.firstChild?.textContent || 'the highlighted field'}: ${event.target.validationMessage}`); }, true);
 function endpoint() {
@@ -59,6 +65,7 @@ $('scrape').addEventListener('click', async () => {
     const [result] = await chrome.scripting.executeScript({target: {tabId: tab.id}, func: scrapeLCSC});
     if (!result?.result) throw new Error('Could not read this page.');
     for (const key of [...keys, 'image']) $(key).value = result.result[key] || '';
+    scrapedPrices = result.result.price || ''; singleUnitPrice = result.result.singleUnitPrice || ''; manualPrice = false; updatePrice();
     imported = false; $('submit').textContent = 'Add to Purchase';
     $('preview').hidden = true;
     status('Product read. Review the fields, photo URL, datasheet, and quantities before adding.');
@@ -97,6 +104,7 @@ $('purchase').addEventListener('submit', async event => {
     const assignments = [...document.querySelectorAll('.project')].filter(row => row.children[0].checked).map(row => ({project: row.children[0].dataset.project, quantity: Number(row.children[2].value)}));
     if (assignments.some(a => !Number.isSafeInteger(a.quantity) || a.quantity < 1) || assignments.reduce((n, a) => n + a.quantity, 0) > quantity) throw new Error('Project quantities must be positive integers and their total cannot exceed purchase quantity.');
     const part = Object.fromEntries(keys.filter(key => key !== 'price').map(key => [key, $(key).value.trim()]));
+    updatePrice();
     const price = $('price').value.trim();
     if (price) part.customFields = {'LCSC Price': price};
     if (!part.number) throw new Error('Part number is required.');

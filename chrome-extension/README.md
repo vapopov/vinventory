@@ -15,8 +15,11 @@ LCSC layouts vary; the scraper uses Product JSON-LD, metadata, and visible speci
 Implementation follows Chrome's [activeTab](https://developer.chrome.com/docs/extensions/develop/concepts/activeTab) and [optional host permissions](https://developer.chrome.com/docs/extensions/develop/concepts/declare-permissions) model.
 
 The editable **LCSC price** field is saved as the part custom field **LCSC Price**.
-Visible price-table quantity tiers are preserved together; otherwise the scraper
-uses a structured unit price with its currency, metadata, or visible price text.
+The extension selects the unit price for the purchase quantity from visible
+quantity tiers and updates it when quantity changes. If no tier matches, it falls
+back to the one-item tier or available scalar unit price. If neither is available,
+the price stays blank. Manually editing the price overrides automatic selection.
+The custom field stores only the selected unit price, including currency.
 Missing prices remain blank. Review the currency and quantity tier before adding;
 this is a snapshot of displayed pricing and does not calculate a checkout total.
 Run scraper checks with `node chrome-extension/tests/price.test.cjs`.
