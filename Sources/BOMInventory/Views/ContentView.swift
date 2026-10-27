@@ -11,6 +11,7 @@ struct ContentView: View {
     }
     @State private var query = ""
     @State private var labelFilters: Set<String> = []
+    @State private var purchaseLabelFilters: Set<String> = []
     @State private var showingLabelFilters = false
     @State private var section = InventorySection.parts
     @State private var storageSelection: String?
@@ -31,6 +32,10 @@ struct ContentView: View {
         }
     }
     private var selected: Part? { (section == .purchase ? store.purchases.map(\.part) : store.parts).first { $0.id == selection } }
+    private var activeLabelFilters: Binding<Set<String>> { section == .purchase ? $purchaseLabelFilters : $labelFilters }
+    private var filterLabels: [String] {
+        section == .purchase ? Array(Set(store.labels + store.purchases.flatMap { $0.part.labels })) : store.labels
+    }
     private var pages: Int { max(1, (results.count + pageSize - 1) / pageSize) }
     private var visible: [Part] { Array(results.dropFirst(page * pageSize).prefix(pageSize)) }
     var body: some View {
@@ -51,7 +56,7 @@ struct ContentView: View {
                     }
                 }
             } else if section == .purchase {
-                PurchaseView(store: store, query: query, selection: $selection, edit: { editor = $0 })
+                PurchaseView(store: store, query: query, labelFilters: purchaseLabelFilters, selection: $selection, edit: { editor = $0 })
             } else if section == .storage {
                 StorageView(store: store, parts: results, locationSelection: $storageSelection, partSelection: $selection, editPart: { editor = $0 }, showPart: navigateToPart)
             } else {
@@ -98,15 +103,15 @@ struct ContentView: View {
             }.keyboardShortcut("n")
             ToolButton(symbol: "pencil", title: section == .purchase ? "Edit selected purchase (⌘E)" : "Edit selected part (⌘E)") { editor = selected }.disabled(selected == nil).keyboardShortcut("e")
             ToolButton(symbol: "trash", title: section == .purchase ? "Delete selected purchase" : "Delete selected part") { deleting = true }.disabled(selected == nil)
-            if section == .parts {
+            if section == .parts || section == .purchase {
                 Button { showingLabelFilters.toggle() } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "line.3.horizontal.decrease")
-                        if !labelFilters.isEmpty { Text("\(labelFilters.count)").font(.system(size: 10, weight: .semibold)) }
+                        if !activeLabelFilters.wrappedValue.isEmpty { Text("\(activeLabelFilters.wrappedValue.count)").font(.system(size: 10, weight: .semibold)) }
                     }.font(.system(size: 15, weight: .semibold)).frame(minWidth: 38).frame(height: 32)
-                        .foregroundStyle(Theme.yellow).background(labelFilters.isEmpty ? Theme.raised : Theme.purple)
-                }.buttonStyle(.plain).help("Filter parts by labels").accessibilityLabel("Filter parts by labels")
-                    .popover(isPresented: $showingLabelFilters) { LabelFilterPopover(labels: store.labels, selected: $labelFilters) }
+                        .foregroundStyle(Theme.yellow).background(activeLabelFilters.wrappedValue.isEmpty ? Theme.raised : Theme.purple)
+                }.buttonStyle(.plain).help(section == .purchase ? "Filter purchases by labels" : "Filter parts by labels").accessibilityLabel(section == .purchase ? "Filter purchases by labels" : "Filter parts by labels")
+                    .popover(isPresented: $showingLabelFilters) { LabelFilterPopover(labels: filterLabels, selected: activeLabelFilters) }
             }
             Rectangle().fill(Theme.panel).frame(width: 1, height: 28).padding(.horizontal, 7)
             Image(systemName: "line.3.horizontal").foregroundStyle(Theme.yellow).frame(width: 38, height: 32).background(Theme.purple)

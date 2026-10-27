@@ -3,6 +3,7 @@ import SwiftUI
 struct PurchaseView: View {
     var store: InventoryStore
     var query: String
+    var labelFilters: Set<String>
     @Binding var selection: String?
     var edit: (Part) -> Void
     @State private var receiving = false
@@ -10,7 +11,13 @@ struct PurchaseView: View {
     @State private var page = 0
     @State private var pageSize = 25
     @State private var assignmentDraft: PurchaseAssignmentDraft?
-    private var items: [PurchaseItem] { store.purchaseSearch(query) }
+    private var items: [PurchaseItem] {
+        store.purchaseSearch(query).filter { item in
+            labelFilters.isEmpty || item.part.labels.contains { label in
+                labelFilters.contains { $0.caseInsensitiveCompare(label) == .orderedSame }
+            }
+        }
+    }
     private var selected: PurchaseItem? { store.purchases.first { $0.id == selection } }
     var body: some View {
         HSplitView {
@@ -63,6 +70,7 @@ struct PurchaseView: View {
         }
         .sheet(item: $assignmentDraft) { PurchaseAssignmentEditor(store: store, draft: $0) }
         .onChange(of: query) { page = 0 }
+        .onChange(of: labelFilters) { page = 0 }
         .onChange(of: pageSize) { page = 0 }
         .onChange(of: items.count) { page = min(page, max(0, (items.count - 1) / pageSize)); checked.formIntersection(Set(store.purchases.map(\.id))) }
     }
