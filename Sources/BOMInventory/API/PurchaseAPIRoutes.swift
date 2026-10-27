@@ -53,8 +53,12 @@ import Foundation
             if existing == nil {
                 DescriptionAnalysis.analyze(item.part.description, valueHint: item.part.value).fillingMissing(in: &item.part)
             }
+            if existing == nil {
+                let saved = try store.addPurchase(item)
+                return try .json(purchaseObject(saved), status: saved.id == item.id ? 201 : 200)
+            }
             try store.savePurchase(item)
-            return try .json(purchaseObject(store.purchases.first { $0.id == item.id } ?? item), status: existing == nil ? 201 : 200)
+            return try .json(purchaseObject(store.purchases.first { $0.id == item.id } ?? item))
         }
         throw APIError(405, "Unsupported purchase route or method.")
     }
@@ -76,11 +80,15 @@ import Foundation
             return try .json(["removed": id, "project": project])
         }
         if (path.count == 4 && method == "POST") || (path.count == 5 && method == "PATCH") {
-            let quantity = try input["quantity"] == nil ? (existing?.quantity ?? 1) : integer(input, "quantity")
+            let quantity = try input["quantity"] == nil ? (method == "POST" ? 1 : existing?.quantity ?? 1) : integer(input, "quantity")
             let designators: String
             if let value = input["designators"] { guard let text = value as? String else { throw APIError(400, "designators must be a string.") }; designators = text }
-            else { designators = existing?.designators ?? "" }
-            try store.savePurchaseAssignment(itemID: id, project: project, quantity: quantity, designators: designators, inferQuantity: input["designators"] != nil && designators != existing?.designators)
+            else { designators = method == "POST" ? "" : existing?.designators ?? "" }
+            if method == "POST" {
+                try store.addPurchaseAssignment(itemID: id, project: project, quantity: quantity, designators: designators)
+            } else {
+                try store.savePurchaseAssignment(itemID: id, project: project, quantity: quantity, designators: designators, inferQuantity: input["designators"] != nil && designators != existing?.designators)
+            }
             return try .json(purchaseObject(store.purchases.first { $0.id == id }!), status: existing == nil ? 201 : 200)
         }
         throw APIError(405, "Unsupported project purchase route or method.")

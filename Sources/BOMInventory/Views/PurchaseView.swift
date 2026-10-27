@@ -38,7 +38,7 @@ struct PurchaseView: View {
             if let item = selected {
                 VStack(spacing: 0) {
                     ScrollView {
-                        PartSummaryView(part: item.part, available: 0, allocated: 0, projects: item.assignments.count, purchaseMode: true, edit: { edit(item.part) })
+                        PartSummaryView(part: item.part, available: item.availableQuantity, allocated: item.allocatedQuantity, projects: item.assignments.count, purchaseMode: true, edit: { edit(item.part) })
                     }
                     HStack {
                         Text("PROJECT PURCHASES").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)

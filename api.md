@@ -115,6 +115,8 @@ Purchases are planned components, separate from inventory stock. An item can hav
 
 Creating a cart item via POST runs the same **Analyze description** logic as the part editor: missing value and tolerance are filled and an inferred component label is appended. Explicit fields and existing labels are preserved.
 
+`POST /v1/purchases` merges into a single existing cart item when **either part number or nonempty LCSC matches**, ignoring case and surrounding spaces. It adds the incoming purchase quantity and sums same-project assignments, appending designators with `, `. Existing IDs, barcode, metadata, and attachments are retained; missing metadata and absent images may be filled, labels are combined, and missing custom fields are added. Each addition's project assignments must fit within its incoming quantity. New items return `201`; merged items return `200` with the existing item's ID. If the identifiers match multiple existing rows, the request fails without changes. PATCH remains a replacement edit by ID and does not add quantities.
+
 Cart POST/PATCH accepts `part` (an object with the same editable fields as the parts API, except `stock`), `quantity` (positive integer, defaults to 1), and `assignments` (array of objects with `project`, `quantity`, and optional `designators`). `part.number` is required on create. PATCH preserves omitted fields; supplied `assignments` replaces the assignment list. Use top-level `quantity` instead of `part.stock`. Responses contain `id`, `part`, `quantity`, and `assignments`; `part.stock` in these responses also represents planned quantity, not inventory stock.
 
 ```sh
@@ -135,7 +137,7 @@ curl -X POST http://127.0.0.1:8080/v1/purchases/receive \
   -H 'Content-Type: application/json' -d '{"ids":["PURCHASE_ID","ANOTHER_PURCHASE_ID"]}'
 ```
 
-Project purchase POST/PATCH uses replacement quantities. Editing designators recalculates quantity, taking precedence over an explicit quantity. The main cart API stores explicit assignment quantities without inferring them from designators.
+Project purchase **POST is additive**: repeated additions sum the project's quantity and append nonempty designators with `, `. If total assigned quantity exceeds the cart quantity, the cart quantity grows to cover it. POST uses the explicit quantity (default 1), without recalculating it from designators. **PATCH replaces** the assigned quantity/designators; editing designators recalculates quantity, taking precedence over an explicit quantity. PATCH does not shrink the cart quantity. The main cart API stores explicit assignment quantities without inferring them from designators.
 
 Receiving adds each item's full planned quantity to PARTS, creates a new inventory part or merges with a single match by part number/LCSC (case-insensitive), and reserves its project-assigned quantities. Existing inventory metadata is retained when merging. The cart items are removed only after the stock and reservations commit. Multiple conflicting inventory matches reject the whole batch. Retrying already-received IDs returns an error, preventing duplicate stock. Responses return `receivedPartIDs` and `receivedPurchaseIDs`. Receiving requires actual delivery; adding/editing a cart item alone never changes stock.
 

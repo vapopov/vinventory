@@ -74,9 +74,10 @@ struct ContentView: View {
                 if section == .purchase {
                     var item = store.purchases.first { $0.id == updated.id } ?? PurchaseItem()
                     item.part = updated
-                    try store.savePurchase(item)
+                    if store.purchases.contains(where: { $0.id == item.id }) { try store.savePurchase(item); selection = item.id }
+                    else { let saved = try store.addPurchase(item); selection = saved.id }
                 } else { try store.save(updated, recordFieldUse: true) }
-                selection = updated.id
+                if section != .purchase { selection = updated.id }
             }
         }
         .alert("Delete part?", isPresented: $deleting) { Button("Cancel", role: .cancel) {}; Button("Delete", role: .destructive) { if let selected { store.perform { if section == .purchase, let item = store.purchases.first(where: { $0.id == selected.id }) { try store.deletePurchase(item) } else { try store.delete(selected) } }; selection = nil } } } message: { Text(section == .purchase ? "Remove this item and its planned project assignments from the purchase cart." : "The selected part and its project allocations will be permanently removed.") }

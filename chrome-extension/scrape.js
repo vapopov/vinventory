@@ -27,8 +27,23 @@ function scrapeLCSC() {
     }
     return '';
   };
+  // Keep visible quantity tiers together so a bulk price is never presented as a single-unit price.
+  const priceRows = [...document.querySelectorAll('tr')].map(row => {
+    const text = clean(row.innerText || row.textContent);
+    return /(?:US\s*\$|USD|[$€£¥])\s*\d/.test(text) && /^\d[\d,]*(?:\s*(?:\+|[-–~]\s*\d[\d,]*))?\s/.test(text) ? text : '';
+  }).filter(Boolean);
+  const offers = [product.offers].flat().filter(Boolean);
+  const offer = offers.find(value => value.price !== undefined) || offers[0] || {};
+  const amount = offer.price ?? offer.priceSpecification?.price;
+  const currency = clean(offer.priceCurrency || offer.priceSpecification?.priceCurrency || meta('product:price:currency'));
+  const metadataPrice = meta('product:price:amount');
+  const visiblePrice = [...document.querySelectorAll('[class*="price"], [class*="Price"]')]
+    .map(el => clean(el.innerText)).find(text => /^(?:(?:US\s*\$|USD|[$€£¥])\s*\d[\d,.]*|\d[\d,.]*\s*(?:USD|EUR|GBP|CNY))(?:\s*\/\s*(?:pc|pcs|piece))?$/i.test(text)) || '';
+  const price = priceRows.length ? [...new Set(priceRows)].join('; ') :
+    amount !== undefined ? clean(`${currency} ${amount} / unit`) :
+    metadataPrice ? clean(`${currency} ${metadataPrice} / unit`) : visiblePrice;
   const lcsc = clean(product.sku).match(/^C\d+$/i)?.[0] || location.pathname.match(/_?(C\d+)\.html/i)?.[1] || lookup('LCSC Part #', 'LCSC Part Number').match(/C\d+/i)?.[0] || '';
   const image = [product.image].flat()[0];
   const datasheet = [...document.querySelectorAll('a[href]')].find(a => /datasheet/i.test(a.textContent) && /\.pdf(?:[?#]|$)/i.test(a.href)) || [...document.querySelectorAll('a[href]')].find(a => /\.pdf(?:[?#]|$)/i.test(a.href));
-  return {number: clean(product.mpn || lookup('Manufacturer Part Number', 'Mfr. Part #', 'Mfr Part #') || document.querySelector('h1')?.innerText || product.name), manufacturer: clean(product.brand?.name || product.manufacturer?.name || lookup('Manufacturer', 'Brand')), lcsc, description: clean(product.description || meta('og:description') || meta('description')), package: lookup('Package', 'Package / Case', 'Packaging'), value: lookup('Value'), tolerance: lookup('Tolerance'), datasheet: absolute(datasheet?.href || ''), image: absolute((typeof image === 'object' ? image?.url : image) || meta('og:image')), source: location.href};
+  return {price, number: clean(product.mpn || lookup('Manufacturer Part Number', 'Mfr. Part #', 'Mfr Part #') || document.querySelector('h1')?.innerText || product.name), manufacturer: clean(product.brand?.name || product.manufacturer?.name || lookup('Manufacturer', 'Brand')), lcsc, description: clean(product.description || meta('og:description') || meta('description')), package: lookup('Package', 'Package / Case', 'Packaging'), value: lookup('Value'), tolerance: lookup('Tolerance'), datasheet: absolute(datasheet?.href || ''), image: absolute((typeof image === 'object' ? image?.url : image) || meta('og:image')), source: location.href};
 }

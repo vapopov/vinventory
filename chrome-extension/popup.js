@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
-const keys = ['number', 'manufacturer', 'lcsc', 'description', 'package', 'value', 'tolerance', 'datasheet'];
-const titles = ['Part number', 'Manufacturer', 'LCSC number', 'Description', 'Package', 'Value', 'Tolerance', 'Datasheet URL'];
+const keys = ['number', 'manufacturer', 'lcsc', 'description', 'package', 'value', 'tolerance', 'datasheet', 'price'];
+const titles = ['Part number', 'Manufacturer', 'LCSC number', 'Description', 'Package', 'Value', 'Tolerance', 'Datasheet URL', 'LCSC price (currency / unit or quantity tiers)'];
 let base = '', loaded = false, imported = false;
 for (const [i, key] of keys.entries()) {
   const label = document.createElement('label'); label.textContent = titles[i];
@@ -96,7 +96,9 @@ $('purchase').addEventListener('submit', async event => {
     if (!Number.isSafeInteger(quantity) || quantity < 1) throw new Error('Purchase quantity must be a positive integer.');
     const assignments = [...document.querySelectorAll('.project')].filter(row => row.children[0].checked).map(row => ({project: row.children[0].dataset.project, quantity: Number(row.children[2].value)}));
     if (assignments.some(a => !Number.isSafeInteger(a.quantity) || a.quantity < 1) || assignments.reduce((n, a) => n + a.quantity, 0) > quantity) throw new Error('Project quantities must be positive integers and their total cannot exceed purchase quantity.');
-    const part = Object.fromEntries(keys.map(key => [key, $(key).value.trim()]));
+    const part = Object.fromEntries(keys.filter(key => key !== 'price').map(key => [key, $(key).value.trim()]));
+    const price = $('price').value.trim();
+    if (price) part.customFields = {'LCSC Price': price};
     if (!part.number) throw new Error('Part number is required.');
     const payload = {part, quantity, assignments};
     status('Preparing purchase… Keep this popup open until finished.');

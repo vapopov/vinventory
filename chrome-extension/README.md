@@ -13,3 +13,10 @@ The extension reuses the application's icons. It reads only the active page when
 LCSC layouts vary; the scraper uses Product JSON-LD, metadata, and visible specification labels. Missing fields remain editable. Review the datasheet link and part number before saving. Closing the popup interrupts work; after a connection error during submission, check the app before retrying to avoid duplicates. The app must remain running and reachable. The local API has no authentication; use a trusted local interface.
 
 Implementation follows Chrome's [activeTab](https://developer.chrome.com/docs/extensions/develop/concepts/activeTab) and [optional host permissions](https://developer.chrome.com/docs/extensions/develop/concepts/declare-permissions) model.
+
+The editable **LCSC price** field is saved as the part custom field **LCSC Price**.
+Visible price-table quantity tiers are preserved together; otherwise the scraper
+uses a structured unit price with its currency, metadata, or visible price text.
+Missing prices remain blank. Review the currency and quantity tier before adding;
+this is a snapshot of displayed pricing and does not calculate a checkout total.
+Run scraper checks with `node chrome-extension/tests/price.test.cjs`.

@@ -102,6 +102,58 @@ final class PurchaseTests: XCTestCase {
         XCTAssertEqual(capacitor.tolerance, "5%")
         XCTAssertTrue(capacitor.labels.contains("Capacitor"))
     }
+    @MainActor func testRepeatedAPIPurchasesMergeByNumberOrLCSCAndSumProjectAssignments() throws {
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let store = try makeStore(path)
+        _ = try store.saveCatalog(kind: .project, originalName: nil, name: "Board", description: "")
+        let router = InventoryAPIRouter(store: store)
+        func post(_ number: String, _ lcsc: String, _ count: Int, _ assigned: Int, _ refs: String) throws -> APIResponse {
+            let body: [String: Any] = ["part": ["number": number, "lcsc": lcsc], "quantity": count, "assignments": [["project": "board", "quantity": assigned, "designators": refs]]]
+            return router.handle(method: "POST", target: "/v1/purchases", body: try JSONSerialization.data(withJSONObject: body))
+        }
+        XCTAssertEqual(try post("CAP", "C123", 5, 2, "C1, C2").status, 201)
+        let original = try XCTUnwrap(store.purchases.first)
+        XCTAssertEqual(try post(" cap ", "", 3, 1, "C3").status, 200)
+        let response = try post("Different supplier number", " c123 ", 2, 1, "C4")
+        XCTAssertEqual(response.status, 200)
+        let returned = try XCTUnwrap(JSONSerialization.jsonObject(with: response.data) as? [String: Any])
+        XCTAssertEqual(returned["id"] as? String, original.id)
+        XCTAssertEqual(store.purchases.count, 1)
+        XCTAssertEqual(store.purchases[0].part.stock, 10)
+        XCTAssertEqual(store.purchases[0].part.barcode, original.part.barcode)
+        XCTAssertEqual(store.purchases[0].assignments[0].id, original.assignments[0].id)
+        XCTAssertEqual(store.purchases[0].assignments[0].quantity, 4)
+        XCTAssertEqual(store.purchases[0].assignments[0].designators, "C1, C2, C3, C4")
+        XCTAssertTrue(store.parts.isEmpty)
+        XCTAssertEqual(try post("CAP", "C123", 1, 2, "C5").status, 400)
+        XCTAssertEqual(store.purchases[0].part.stock, 10)
+        let reopened = try makeStore(path)
+        XCTAssertEqual(reopened.purchases[0].part.stock, 10)
+        XCTAssertEqual(reopened.purchases[0].assignments[0].quantity, 4)
+    }
+    @MainActor func testProjectPurchasePOSTAddsWhilePATCHReplaces() throws {
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let store = try makeStore(path)
+        _ = try store.saveCatalog(kind: .project, originalName: nil, name: "Board", description: "")
+        var item = PurchaseItem(); item.part.number = "ABC"; item.part.stock = 2
+        try store.savePurchase(item)
+        let router = InventoryAPIRouter(store: store)
+        func call(_ method: String, _ count: Int, _ refs: String) throws -> APIResponse {
+            let body: [String: Any] = ["purchaseID": item.id, "quantity": count, "designators": refs]
+            let target = "/v1/projects/Board/purchase" + (method == "PATCH" ? "/" + item.id : "")
+            return router.handle(method: method, target: target, body: try JSONSerialization.data(withJSONObject: body))
+        }
+        XCTAssertEqual(try call("POST", 2, "R1, R2").status, 201)
+        XCTAssertEqual(try call("POST", 3, "R3-R5").status, 200)
+        XCTAssertEqual(store.purchases[0].assignments[0].quantity, 5)
+        XCTAssertEqual(store.purchases[0].assignments[0].designators, "R1, R2, R3-R5")
+        XCTAssertEqual(store.purchases[0].part.stock, 5)
+        XCTAssertEqual(try call("PATCH", 1, "R1").status, 200)
+        XCTAssertEqual(store.purchases[0].assignments[0].quantity, 1)
+        XCTAssertEqual(store.purchases[0].part.stock, 5)
+    }
     @MainActor func testAPIManagesCartAndProjectPurchases() throws {
         let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
         defer { try? FileManager.default.removeItem(atPath: path) }

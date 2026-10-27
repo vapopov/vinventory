@@ -23,6 +23,59 @@ extension InventoryStore {
             total += assignment.quantity
         }
     }
+    /// New cart additions are additive; editing by identifier remains a replacement.
+    @discardableResult func addPurchase(_ original: PurchaseItem) throws -> PurchaseItem {
+        var incoming = original
+        incoming.part.number = incoming.part.number.trimmingCharacters(in: .whitespacesAndNewlines)
+        incoming.part.lcsc = incoming.part.lcsc.trimmingCharacters(in: .whitespacesAndNewlines)
+        for i in incoming.assignments.indices { incoming.assignments[i].project = incoming.assignments[i].project.trimmingCharacters(in: .whitespacesAndNewlines) }
+        try validatePurchase(incoming)
+        func normalized(_ value: String) -> String { value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        let matches = purchases.filter {
+            normalized($0.part.number) == normalized(incoming.part.number) ||
+            (!incoming.part.lcsc.isEmpty && normalized($0.part.lcsc) == normalized(incoming.part.lcsc))
+        }
+        guard matches.count <= 1 else { throw InventoryError.message("Part number and LCSC match multiple cart items. Resolve those duplicates before adding.") }
+        guard var item = matches.first else {
+            try savePurchase(incoming)
+            return purchases.first { $0.id == incoming.id } ?? incoming
+        }
+        item.part.stock = try purchaseSum(item.part.stock, incoming.part.stock)
+        for addition in incoming.assignments {
+            if let index = item.assignments.firstIndex(where: { normalized($0.project) == normalized(addition.project) }) {
+                item.assignments[index].quantity = try purchaseSum(item.assignments[index].quantity, addition.quantity)
+                item.assignments[index].designators = joinedDesignators(item.assignments[index].designators, addition.designators)
+            } else { item.assignments.append(addition) }
+        }
+        // Preserve the existing item, identifiers, attachments, and explicit metadata.
+        for key in [\Part.manufacturer, \Part.lcsc, \Part.description, \Part.package, \Part.value, \Part.tolerance, \Part.storage, \Part.datasheet] {
+            if item.part[keyPath: key].isEmpty { item.part[keyPath: key] = incoming.part[keyPath: key] }
+        }
+        for label in incoming.part.labels where !item.part.labels.contains(where: { normalized($0) == normalized(label) }) { item.part.labels.append(label) }
+        item.part.customFields.merge(incoming.part.customFields) { current, _ in current }
+        if item.part.image == nil { item.part.image = incoming.part.image }
+        try savePurchase(item)
+        return purchases.first { $0.id == item.id } ?? item
+    }
+    func addPurchaseAssignment(itemID: String, project: String, quantity: Int, designators: String) throws {
+        guard quantity > 0, var item = purchases.first(where: { $0.id == itemID }) else { throw InventoryError.message("Select a purchase and enter a positive quantity.") }
+        if let index = item.assignments.firstIndex(where: { $0.project.caseInsensitiveCompare(project) == .orderedSame }) {
+            item.assignments[index].quantity = try purchaseSum(item.assignments[index].quantity, quantity)
+            item.assignments[index].designators = joinedDesignators(item.assignments[index].designators, designators)
+        } else { item.assignments.append(PurchaseAssignment(project: project, quantity: quantity, designators: designators)) }
+        var assigned = 0
+        for assignment in item.assignments { assigned = try purchaseSum(assigned, assignment.quantity) }
+        item.part.stock = max(item.part.stock, assigned)
+        try savePurchase(item)
+    }
+    private func purchaseSum(_ first: Int, _ second: Int) throws -> Int {
+        let sum = first.addingReportingOverflow(second)
+        guard !sum.overflow else { throw InventoryError.message("Purchase quantity is too large.") }
+        return sum.partialValue
+    }
+    private func joinedDesignators(_ first: String, _ second: String) -> String {
+        [first, second].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.joined(separator: ", ")
+    }
     func savePurchase(_ original: PurchaseItem) throws {
         var item = original
         item.part.number = item.part.number.trimmingCharacters(in: .whitespacesAndNewlines)
