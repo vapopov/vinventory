@@ -34,7 +34,7 @@ URL-encode project names as one path segment, e.g. `USB%20Hub`. IDs are returned
 
 ## Parts
 
-Create requires `number`. Editable fields: `number`, `manufacturer`, `lcsc`, `description`, `package`, `value`, `tolerance`, `stock`, `storage`, `datasheet`, `labels` (string array), `customFields` (string-to-string object), and `barcode`. `id` and `image` are not editable through this API. IDs and unique barcodes are generated when omitted. Stock is a nonnegative integer and cannot fall below allocated quantity. Label arrays and custom-field objects replace the previous values when supplied in PATCH; omitted fields stay unchanged.
+Create requires `number`. Editable fields: `number`, `manufacturer`, `spn`, `supplier`, `description`, `package`, `value`, `tolerance`, `stock`, `storage`, `datasheet`, `labels` (string array), `customFields` (string-to-string object), and `barcode`. `id` and `image` are not editable through this API. IDs and unique barcodes are generated when omitted. Stock is a nonnegative integer and cannot fall below allocated quantity. Label arrays and custom-field objects replace the previous values when supplied in PATCH; omitted fields stay unchanged.
 
 `datasheet` accepts a web URL or an accessible local PDF path; it does not download remote files. Image uploads are not implemented. Allocation records, rather than part stock edits, control project reservations.
 
@@ -43,7 +43,7 @@ curl http://127.0.0.1:8080/health
 
 curl -X POST http://127.0.0.1:8080/v1/parts \
   -H 'Content-Type: application/json' \
-  -d '{"number":"RC0402FR-074K7L","manufacturer":"YAGEO","lcsc":"C105871","description":"4.7kΩ resistor","value":"4.7kΩ","package":"0402","tolerance":"1%","stock":100,"labels":["Resistor"],"customFields":{"Voltage":"50V"}}'
+  -d '{"number":"RC0402FR-074K7L","manufacturer":"YAGEO","spn":"C105871","supplier":"LCSC","description":"4.7kΩ resistor","value":"4.7kΩ","package":"0402","tolerance":"1%","stock":100,"labels":["Resistor"],"customFields":{"Voltage":"50V"}}'
 
 curl 'http://127.0.0.1:8080/v1/parts?q=4.7k'
 
@@ -122,7 +122,7 @@ Cart POST/PATCH accepts `part` (an object with the same editable fields as the p
 ```sh
 curl -X POST http://127.0.0.1:8080/v1/purchases \
   -H 'Content-Type: application/json' \
-  -d '{"part":{"number":"RC0402FR-074K7L","manufacturer":"YAGEO","value":"4.7kΩ","package":"0402","lcsc":"C105871","labels":["Resistor"]},"quantity":100,"assignments":[{"project":"USB Hub","quantity":3,"designators":"R1-R3"}]}'
+  -d '{"part":{"number":"RC0402FR-074K7L","manufacturer":"YAGEO","value":"4.7kΩ","package":"0402","spn":"C105871","supplier":"LCSC","labels":["Resistor"]},"quantity":100,"assignments":[{"project":"USB Hub","quantity":3,"designators":"R1-R3"}]}'
 
 curl -X PATCH http://127.0.0.1:8080/v1/purchases/PURCHASE_ID \
   -H 'Content-Type: application/json' -d '{"quantity":200}'
@@ -139,7 +139,7 @@ curl -X POST http://127.0.0.1:8080/v1/purchases/receive \
 
 Project purchase **POST is additive**: repeated additions sum the project's quantity and append nonempty designators with `, `. If total assigned quantity exceeds the cart quantity, the cart quantity grows to cover it. POST uses the explicit quantity (default 1), without recalculating it from designators. **PATCH replaces** the assigned quantity/designators; editing designators recalculates quantity, taking precedence over an explicit quantity. PATCH does not shrink the cart quantity. The main cart API stores explicit assignment quantities without inferring them from designators.
 
-Receiving adds each item's full planned quantity to PARTS, creates a new inventory part or merges with a single match by part number/LCSC (case-insensitive), and reserves its project-assigned quantities. Existing inventory metadata is retained when merging. The cart items are removed only after the stock and reservations commit. Multiple conflicting inventory matches reject the whole batch. Retrying already-received IDs returns an error, preventing duplicate stock. Responses return `receivedPartIDs` and `receivedPurchaseIDs`. Receiving requires actual delivery; adding/editing a cart item alone never changes stock.
+Receiving adds each item's full planned quantity to PARTS, creates a new inventory part or merges with a single match by part number or supplier/SPN pair (case-insensitive), and reserves its project-assigned quantities. Existing inventory metadata is retained when merging. The cart items are removed only after the stock and reservations commit. Multiple conflicting inventory matches reject the whole batch. Retrying already-received IDs returns an error, preventing duplicate stock. Responses return `receivedPartIDs` and `receivedPurchaseIDs`. Receiving requires actual delivery; adding/editing a cart item alone never changes stock.
 
 An unfulfilled Requested BOM entry with the same project and exact designator group is linked to the received reservation. Unrelated Requested rows are preserved. Project renames update planned assignments; project deletion removes assignments while keeping cart items.
 
@@ -154,3 +154,13 @@ filesystem paths cannot be supplied through `part`. HTTP requests retain the 1 M
 limit. The Chrome extension resizes photos before upload.
 
 See [Chrome extension setup](chrome-extension/README.md) for LCSC imports.
+
+## Suppliers
+
+Parts, purchase items, and project requested items store optional `spn` (supplier part number) and `supplier`. Whenever `spn` is nonempty, `supplier` is required. Suggested suppliers are `LCSC`, `DigiKey`, `Mouser`, and `Newark`; other supplier names are accepted. Each part stores one supplier/SPN pair. Manufacturer part number (`number`) remains separate.
+
+For example, send `{"number":"ABC123","spn":"296-ABC123-ND","supplier":"DigiKey","stock":10}` to create a DigiKey-sourced part. Purchase `part` objects use the same fields, and requested-item POST/PATCH accepts `spn` and `supplier` directly. PATCH preserves omitted fields. SPN matching is case-insensitive and requires the same supplier; manufacturer part numbers still match independently.
+
+Existing saved `lcsc` data automatically loads as `spn` with supplier `LCSC`. The API continues to accept legacy `lcsc` writes (including the browser extension), which set both fields to LCSC. Do not combine `lcsc` with `spn`/`supplier` in a part write. Responses use `spn` and `supplier`.
+
+Purchase and requested CSV exports use supplier names as column headings, never `SPN`: LCSC-only exports contain `LCSC`; mixed supplier exports contain separate `LCSC`, `DigiKey`, etc. columns, populated only for their respective rows. Project purchase exports retain project-specific quantities and designators. CSV imports recognize named supplier columns or generic `SPN` plus `Supplier`. Each row may contain only one supplier part number.

@@ -5,11 +5,12 @@ extension InventoryStore {
         let words = query.lowercased().split(whereSeparator: \.isWhitespace)
         return purchases.filter { item in
             let p = item.part
-            let fields = ([p.number, p.manufacturer, p.lcsc, p.description, p.package, p.value, p.tolerance, p.barcode] + p.labels + item.assignments.flatMap { [$0.project, $0.designators] }).joined(separator: " ").lowercased()
+            let fields = ([p.number, p.manufacturer, p.spn, p.supplier, p.description, p.package, p.value, p.tolerance, p.barcode] + p.labels + item.assignments.flatMap { [$0.project, $0.designators] }).joined(separator: " ").lowercased()
             return words.allSatisfy { fields.contains($0) }
         }.sorted { $0.part.number.localizedStandardCompare($1.part.number) == .orderedAscending }
     }
     func validatePurchase(_ item: PurchaseItem) throws {
+        try Supplier.validate(spn: item.part.spn, supplier: item.part.supplier)
         guard !item.part.number.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, item.part.stock > 0 else { throw InventoryError.message("Enter a part number and positive purchase quantity.") }
         guard !item.part.barcode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw InventoryError.message("Barcode cannot be empty.") }
         var total = 0
@@ -27,15 +28,16 @@ extension InventoryStore {
     @discardableResult func addPurchase(_ original: PurchaseItem) throws -> PurchaseItem {
         var incoming = original
         incoming.part.number = incoming.part.number.trimmingCharacters(in: .whitespacesAndNewlines)
-        incoming.part.lcsc = incoming.part.lcsc.trimmingCharacters(in: .whitespacesAndNewlines)
+        incoming.part.spn = incoming.part.spn.trimmingCharacters(in: .whitespacesAndNewlines)
+        incoming.part.supplier = Supplier.canonical(incoming.part.supplier)
         for i in incoming.assignments.indices { incoming.assignments[i].project = incoming.assignments[i].project.trimmingCharacters(in: .whitespacesAndNewlines) }
         try validatePurchase(incoming)
         func normalized(_ value: String) -> String { value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
         let matches = purchases.filter {
             normalized($0.part.number) == normalized(incoming.part.number) ||
-            (!incoming.part.lcsc.isEmpty && normalized($0.part.lcsc) == normalized(incoming.part.lcsc))
+            Supplier.matches($0.part.spn, $0.part.supplier, incoming.part.spn, incoming.part.supplier)
         }
-        guard matches.count <= 1 else { throw InventoryError.message("Part number and LCSC match multiple cart items. Resolve those duplicates before adding.") }
+        guard matches.count <= 1 else { throw InventoryError.message("Part number and supplier part number match multiple cart items. Resolve those duplicates before adding.") }
         guard var item = matches.first else {
             try savePurchase(incoming)
             return purchases.first { $0.id == incoming.id } ?? incoming
@@ -48,7 +50,8 @@ extension InventoryStore {
             } else { item.assignments.append(addition) }
         }
         // Preserve the existing item, identifiers, attachments, and explicit metadata.
-        for key in [\Part.manufacturer, \Part.lcsc, \Part.description, \Part.package, \Part.value, \Part.tolerance, \Part.storage, \Part.datasheet] {
+        if item.part.spn.isEmpty { item.part.spn = incoming.part.spn; item.part.supplier = incoming.part.supplier }
+        for key in [\Part.manufacturer, \Part.description, \Part.package, \Part.value, \Part.tolerance, \Part.storage, \Part.datasheet] {
             if item.part[keyPath: key].isEmpty { item.part[keyPath: key] = incoming.part[keyPath: key] }
         }
         for label in incoming.part.labels where !item.part.labels.contains(where: { normalized($0) == normalized(label) }) { item.part.labels.append(label) }
@@ -79,6 +82,8 @@ extension InventoryStore {
     func savePurchase(_ original: PurchaseItem) throws {
         var item = original
         item.part.number = item.part.number.trimmingCharacters(in: .whitespacesAndNewlines)
+        item.part.spn = item.part.spn.trimmingCharacters(in: .whitespacesAndNewlines)
+        item.part.supplier = Supplier.canonical(item.part.supplier)
         for index in item.assignments.indices {
             if let project = projects.first(where: { $0.name.caseInsensitiveCompare(item.assignments[index].project) == .orderedSame }) { item.assignments[index].project = project.name }
         }
@@ -150,7 +155,7 @@ extension InventoryStore {
                 let p = item.part
                 let matches = workingParts.indices.filter {
                     workingParts[$0].number.caseInsensitiveCompare(p.number) == .orderedSame ||
-                    (!p.lcsc.isEmpty && workingParts[$0].lcsc.caseInsensitiveCompare(p.lcsc) == .orderedSame)
+                    Supplier.matches(workingParts[$0].spn, workingParts[$0].supplier, p.spn, p.supplier)
                 }
                 guard matches.count <= 1 else { throw InventoryError.message("Multiple inventory matches for \(p.number). Resolve duplicates before receiving.") }
                 let target: Part

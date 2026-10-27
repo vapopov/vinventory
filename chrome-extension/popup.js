@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
-const keys = ['number', 'manufacturer', 'lcsc', 'description', 'package', 'value', 'tolerance', 'datasheet', 'price'];
-const titles = ['Part number', 'Manufacturer', 'LCSC number', 'Description', 'Package', 'Value', 'Tolerance', 'Datasheet URL', 'LCSC unit price'];
+const keys = ['number', 'manufacturer', 'supplier', 'spn', 'description', 'package', 'value', 'tolerance', 'datasheet', 'price'];
+const titles = ['Part number', 'Manufacturer', 'Supplier', 'Supplier part number', 'Description', 'Package', 'Value', 'Tolerance', 'Datasheet URL', 'Supplier unit price'];
 let base = '', loaded = false, imported = false;
 let scrapedPrices = '', singleUnitPrice = '', manualPrice = false;
 function updatePrice() {
@@ -62,7 +62,11 @@ for (const id of ['address', 'port']) $(id).addEventListener('input', () => { lo
 $('scrape').addEventListener('click', async () => {
   try {
     const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
-    const [result] = await chrome.scripting.executeScript({target: {tabId: tab.id}, func: scrapeLCSC});
+    const host = new URL(tab.url).hostname;
+    const isLCSC = /(^|\.)lcsc\.com$/i.test(host);
+    const isDigiKey = /(^|\.)digikey\.(?:com|ca|co\.uk|de|fr|jp|cn|hk|com\.au|co\.nz|in|sg|tw|kr|nl|it|es|se|dk|no|fi|at|be|ch|ie|co\.il|co\.za|com\.mx)$/i.test(host);
+    if (!isLCSC && !isDigiKey) throw new Error('Open an LCSC or DigiKey product detail page first.');
+    const [result] = await chrome.scripting.executeScript({target: {tabId: tab.id}, func: isLCSC ? scrapeLCSC : scrapeDigiKey});
     if (!result?.result) throw new Error('Could not read this page.');
     for (const key of [...keys, 'image']) $(key).value = result.result[key] || '';
     scrapedPrices = result.result.price || ''; singleUnitPrice = result.result.singleUnitPrice || ''; manualPrice = false; updatePrice();
@@ -106,7 +110,7 @@ $('purchase').addEventListener('submit', async event => {
     const part = Object.fromEntries(keys.filter(key => key !== 'price').map(key => [key, $(key).value.trim()]));
     updatePrice();
     const price = $('price').value.trim();
-    if (price) part.customFields = {'LCSC Price': price};
+    if (price) part.customFields = {[`${part.supplier || 'Supplier'} Price`]: price};
     if (!part.number) throw new Error('Part number is required.');
     const payload = {part, quantity, assignments};
     status('Preparing purchase… Keep this popup open until finished.');
@@ -124,7 +128,7 @@ $('purchase').addEventListener('submit', async event => {
   $('address').value = saved.address; $('port').value = saved.port;
   try {
     base = endpoint();
-    if (await chrome.permissions.contains({origins: [base + '/*']})) { await loadProjects(); status('Projects loaded. Read an LCSC product to begin.'); }
+    if (await chrome.permissions.contains({origins: [base + '/*']})) { await loadProjects(); status('Projects loaded. Read an LCSC or DigiKey product to begin.'); }
     else status('Open API settings and connect to your local app.');
   } catch (error) { status(`Start the local API and connect: ${error.message}`); }
 })();

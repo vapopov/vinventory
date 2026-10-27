@@ -1,10 +1,10 @@
-# LCSC Purchase Chrome extension
+# Supplier Purchase Chrome extension
 
 1. Rebuild and run BOM Inventory with this checkout so the API supports image imports.
 2. Start the app's local API (default `127.0.0.1:8080`).
 3. Open Chrome's Extensions page (`chrome://extensions`), enable **Developer mode**, choose **Load unpacked**, and select this `chrome-extension` folder.
 4. Open the extension, expand **Local API settings**, enter the HTTP address (for example `http://127.0.0.1`) and port, then choose **Save & load projects**. Allow access to that host when prompted.
-5. Open an LCSC product detail page and click **Read current LCSC product**. Review or correct the extracted fields, image URL, and datasheet URL.
+5. Open an LCSC or DigiKey product detail page and click **Read current product**. Review or correct the extracted fields, image URL, and datasheet URL.
 6. Enter the purchase quantity, check the desired projects, and enter the quantity allocated to each. Their sum must not exceed the purchase quantity. Unallocated purchases are allowed.
 7. Click **Add to Purchase**, allow access to the image host, and keep the popup open until success appears.
 
@@ -14,7 +14,7 @@ LCSC layouts vary; the scraper uses Product JSON-LD, metadata, and visible speci
 
 Implementation follows Chrome's [activeTab](https://developer.chrome.com/docs/extensions/develop/concepts/activeTab) and [optional host permissions](https://developer.chrome.com/docs/extensions/develop/concepts/declare-permissions) model.
 
-The editable **LCSC price** field is saved as the part custom field **LCSC Price**.
+The editable **Supplier unit price** field is saved as the part custom field **LCSC Price** or **DigiKey Price**.
 The extension selects the unit price for the purchase quantity from visible
 quantity tiers and updates it when quantity changes. If no tier matches, it falls
 back to the one-item tier or available scalar unit price. If neither is available,
@@ -23,3 +23,15 @@ The custom field stores only the selected unit price, including currency.
 Missing prices remain blank. Review the currency and quantity tier before adding;
 this is a snapshot of displayed pricing and does not calculate a checkout total.
 Run scraper checks with `node chrome-extension/tests/price.test.cjs`.
+
+
+Imports send explicit `part.supplier` (`LCSC` or `DigiKey`) and `part.spn`;
+manufacturer part number remains in `part.number`. The legacy `lcsc` API field
+is no longer sent. Review the editable supplier and supplier part number fields.
+DigiKey extraction supports English product detail pages on regional DigiKey
+sites. It prefers cut-tape SKU and pricing when listed, keeps each pricing table
+separate, and retains photos, datasheets, and project allocations. Verify the
+packaging before saving; localized labels may require manual correction.
+
+DigiKey layout reference: [example product page](https://www.digikey.ie/en/products/detail/texas-instruments/TPS63070RNMR/6175216).
+Run DigiKey fixture checks with `node chrome-extension/tests/digikey.test.cjs`.

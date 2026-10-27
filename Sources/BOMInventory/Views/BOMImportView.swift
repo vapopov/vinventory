@@ -18,7 +18,7 @@ struct BOMImportView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Import parts — \(document.filename)").font(.title2.bold())
-            Text("Edit any cell and uncheck rows to skip. Matching part or LCSC numbers increase stock; other rows create new parts. Unknown columns become custom fields.").foregroundStyle(Theme.muted)
+            Text("Edit any cell and uncheck rows to skip. Matching part numbers or supplier/SPN pairs increase stock; other rows create new parts. Unknown columns become custom fields.").foregroundStyle(Theme.muted)
             HStack {
                 Button("Select all") { for i in document.rows.indices { document.rows[i].selected = true } }
                 Button("Deselect all") { for i in document.rows.indices { document.rows[i].selected = false } }

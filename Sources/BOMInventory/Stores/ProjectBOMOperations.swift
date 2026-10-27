@@ -129,6 +129,7 @@ extension InventoryStore {
         return total
     }
     func saveRequest(project: String, existing: ProjectBOMEntry?, item: ProjectBOMItem) throws {
+        try Supplier.validate(spn: item.spn, supplier: item.supplier)
         guard item.quantity > 0, !item.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw InventoryError.message("Enter a value or part number and a positive whole-number quantity.")
         }
@@ -150,10 +151,18 @@ extension InventoryStore {
     }
     func requestedCSV(project: String) -> String {
         func escape(_ value: String) -> String { "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
-        var lines = [["Designator", "Footprint", "Quantity", "Value", "LCSC Part #"].map(escape).joined(separator: ",")]
-        for entry in bomEntries(for: project) where requestedQuantity(entry) > 0 {
-            let lcsc = entry.item.lcsc.isEmpty ? (parts.first { $0.id == entry.partID }?.lcsc ?? "") : entry.item.lcsc
-            lines.append([entry.item.designators, entry.item.package, String(requestedQuantity(entry)), entry.item.value, lcsc].map(escape).joined(separator: ","))
+        let entries = bomEntries(for: project).filter { requestedQuantity($0) > 0 }
+        func identifier(_ entry: ProjectBOMEntry) -> (String, String) {
+            if !entry.item.spn.isEmpty { return (Supplier.canonical(entry.item.supplier), entry.item.spn) }
+            let part = parts.first { $0.id == entry.partID }
+            return (Supplier.canonical(part?.supplier ?? ""), part?.spn ?? "")
+        }
+        let names = Set(entries.map { identifier($0).0 }.filter { !$0.isEmpty }).sorted()
+        let suppliers = names.isEmpty ? ["LCSC"] : names
+        var lines = [(["Designator", "Footprint", "Quantity", "Value"] + suppliers).map(escape).joined(separator: ",")]
+        for entry in entries {
+            let (supplier, number) = identifier(entry)
+            lines.append(([entry.item.designators, entry.item.package, String(requestedQuantity(entry)), entry.item.value] + suppliers.map { $0 == supplier ? number : "" }).map(escape).joined(separator: ","))
         }
         return lines.joined(separator: "\r\n") + "\r\n"
     }

@@ -6,7 +6,7 @@ struct ProjectRequestsView: View {
     var query: String
     private var entries: [ProjectBOMEntry] {
         store.bomEntries(for: project).filter { entry in
-            store.requestedQuantity(entry) > 0 && (query.isEmpty || [entry.item.designators, entry.item.value, entry.item.package, entry.item.lcsc].joined(separator: " ").localizedCaseInsensitiveContains(query))
+            store.requestedQuantity(entry) > 0 && (query.isEmpty || [entry.item.designators, entry.item.value, entry.item.package, entry.item.supplier + " " + entry.item.spn].joined(separator: " ").localizedCaseInsensitiveContains(query))
         }
     }
     @State private var selection: String?
@@ -54,7 +54,7 @@ struct ProjectRequestsView: View {
             } else {
             ProjectRequestsTable(rows: visible.enumerated().map { index, entry in
                 ProjectRequestRow(id: entry.id, values: [String(offset + index + 1), entry.item.designators,
-                    String(store.requestedQuantity(entry)), entry.item.value, entry.item.package, entry.item.lcsc])
+                    String(store.requestedQuantity(entry)), entry.item.value, entry.item.package, entry.item.supplier + " " + entry.item.spn])
             }, selection: $selection)
             PaginationBar(count: filtered.count, page: $page, pageSize: $pageSize, unit: "requested row")
             }

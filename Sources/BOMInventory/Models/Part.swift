@@ -3,7 +3,13 @@ struct Part: Identifiable, Codable, Equatable {
     var id = UUID().uuidString
     var number = ""
     var manufacturer = ""
-    var lcsc = ""
+    var spn = ""
+    var supplier = ""
+    // Compatibility for callers using the original LCSC-only model.
+    var lcsc: String {
+        get { Supplier.canonical(supplier) == "LCSC" ? spn : "" }
+        set { spn = newValue; supplier = newValue.isEmpty ? "" : "LCSC" }
+    }
     var customFields: [String: String] = [:]
     var labels: [String] = []
     var tolerance = ""
@@ -18,15 +24,18 @@ struct Part: Identifiable, Codable, Equatable {
 
     init() {}
     private enum CodingKeys: String, CodingKey {
-        case id, number, manufacturer, lcsc, customFields, labels, tolerance, description, package, value, storage, datasheet, barcode, stock, image
+        case id, number, manufacturer, spn, supplier, customFields, labels, tolerance, description, package, value, storage, datasheet, barcode, stock, image
     }
-    private enum LegacyKeys: String, CodingKey { case category }
+    private enum LegacyKeys: String, CodingKey { case category, lcsc }
     init(from decoder: Decoder) throws {
         let data = try decoder.container(keyedBy: CodingKeys.self)
         id = try data.decode(String.self, forKey: .id)
         number = try data.decode(String.self, forKey: .number)
         manufacturer = try data.decode(String.self, forKey: .manufacturer)
-        lcsc = try data.decodeIfPresent(String.self, forKey: .lcsc) ?? ""
+        let legacy = try decoder.container(keyedBy: LegacyKeys.self)
+        let oldLCSC = try legacy.decodeIfPresent(String.self, forKey: .lcsc) ?? ""
+        spn = try data.decodeIfPresent(String.self, forKey: .spn) ?? oldLCSC
+        supplier = Supplier.canonical(try data.decodeIfPresent(String.self, forKey: .supplier) ?? (oldLCSC.isEmpty ? "" : "LCSC"))
         customFields = try data.decodeIfPresent([String: String].self, forKey: .customFields) ?? [:]
         if let saved = try data.decodeIfPresent([String].self, forKey: .labels) {
             labels = saved

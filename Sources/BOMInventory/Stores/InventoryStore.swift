@@ -116,7 +116,9 @@ import Observation
             if !canonicalLabels.contains(canonical) { canonicalLabels.append(canonical) }
         }
         part.labels = canonicalLabels
-        part.lcsc = part.lcsc.trimmingCharacters(in: .whitespacesAndNewlines)
+        part.spn = part.spn.trimmingCharacters(in: .whitespacesAndNewlines)
+        part.supplier = Supplier.canonical(part.supplier)
+        try Supplier.validate(spn: part.spn, supplier: part.supplier)
         part.tolerance = part.tolerance.trimmingCharacters(in: .whitespacesAndNewlines)
         part.manufacturer = canonical(part.manufacturer, in: manufacturers)
         part.package = canonical(part.package, in: packages)
@@ -169,19 +171,21 @@ import Observation
     func importParts(_ imported: [Part]) throws {
         func key(_ value: String) -> String { value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
         var working = parts
-        var numberIndex: [String: Set<Int>] = [:], lcscIndex: [String: Set<Int>] = [:]
+        var numberIndex: [String: Set<Int>] = [:], supplierIndex: [String: Set<Int>] = [:]
         func register(_ part: Part, at index: Int) {
             if !key(part.number).isEmpty { numberIndex[key(part.number), default: []].insert(index) }
-            if !key(part.lcsc).isEmpty { lcscIndex[key(part.lcsc), default: []].insert(index) }
+            if !key(part.spn).isEmpty { supplierIndex[Supplier.key(part.spn, part.supplier), default: []].insert(index) }
         }
         for (index, part) in working.enumerated() { register(part, at: index) }
         var barcodes = Set(parts.map(\.barcode)), changed = Set<Int>()
         for var part in imported {
             part.number = part.number.trimmingCharacters(in: .whitespacesAndNewlines)
-            part.lcsc = part.lcsc.trimmingCharacters(in: .whitespacesAndNewlines)
+            part.spn = part.spn.trimmingCharacters(in: .whitespacesAndNewlines)
+            part.supplier = Supplier.canonical(part.supplier)
+            try Supplier.validate(spn: part.spn, supplier: part.supplier)
             guard !part.number.isEmpty, part.stock >= 0 else { throw InventoryError.message("Every imported part needs a part number and nonnegative stock.") }
-            let matches = (numberIndex[key(part.number)] ?? []).union(key(part.lcsc).isEmpty ? [] : (lcscIndex[key(part.lcsc)] ?? []))
-            guard matches.count <= 1 else { throw InventoryError.message("\(part.number): part number or LCSC number matches multiple inventory parts. Resolve the conflicting identifiers before importing.") }
+            let matches = (numberIndex[key(part.number)] ?? []).union(key(part.spn).isEmpty ? [] : (supplierIndex[Supplier.key(part.spn, part.supplier)] ?? []))
+            guard matches.count <= 1 else { throw InventoryError.message("\(part.number): part number or supplier part number matches multiple inventory parts. Resolve the conflicting identifiers before importing.") }
             var canonicalLabels: [String] = []
             for label in part.labels {
                 let name = canonical(label, in: labels + working.flatMap(\.labels) + canonicalLabels)
@@ -193,7 +197,7 @@ import Observation
                 guard !overflow else { throw InventoryError.message("Stock quantity is too large for \(part.number).") }
                 working[index].stock = stock
                 for label in part.labels where !working[index].labels.contains(where: { $0.caseInsensitiveCompare(label) == .orderedSame }) { working[index].labels.append(label) }
-                if working[index].lcsc.isEmpty { working[index].lcsc = part.lcsc }
+                if working[index].spn.isEmpty { working[index].spn = part.spn; working[index].supplier = part.supplier }
                 register(part, at: index)
                 changed.insert(index)
             } else {
@@ -268,7 +272,7 @@ import Observation
     func search(_ query: String) -> [Part] {
         let tokens = query.lowercased().split(whereSeparator: { $0.isWhitespace })
         return parts.filter { part in
-            let fields = [part.number, part.manufacturer, part.lcsc, part.customFields.map { "\($0.key) \($0.value)" }.joined(separator: " "), part.description, part.package, part.value, part.tolerance, part.labels.joined(separator: " "), part.barcode].joined(separator: " ").lowercased()
+            let fields = [part.number, part.manufacturer, part.spn, part.supplier, part.customFields.map { "\($0.key) \($0.value)" }.joined(separator: " "), part.description, part.package, part.value, part.tolerance, part.labels.joined(separator: " "), part.barcode].joined(separator: " ").lowercased()
             return tokens.allSatisfy { fields.contains($0) }
         }.sorted { $0.number.localizedStandardCompare($1.number) == .orderedAscending }
     }

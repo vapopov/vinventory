@@ -8,7 +8,9 @@ enum PurchaseCSV {
             return item.assignments.contains { $0.project.caseInsensitiveCompare(project) == .orderedSame }
         }.sorted { $0.part.number.localizedStandardCompare($1.part.number) == .orderedAscending }
         let customKeys = Set(items.flatMap { $0.part.customFields.keys }).sorted()
-        var rows = [["Part Number", "LCSC", "Manufacturer", "Description", "Package", "Value", "Tolerance", "Quantity", "Projects", "Designators", "Labels", "Datasheet"] + customKeys.map { "Custom: " + $0 }]
+        let names = Set(items.filter { !$0.part.spn.isEmpty }.map { Supplier.canonical($0.part.supplier) }).filter { !$0.isEmpty }.sorted()
+        let suppliers = names.isEmpty ? ["LCSC"] : names
+        var rows = [["Part Number"] + suppliers + ["Manufacturer", "Description", "Package", "Value", "Tolerance", "Quantity", "Projects", "Designators", "Labels", "Datasheet"] + customKeys.map { "Custom: " + $0 }]
         for item in items {
             let part = item.part
             let assignments = item.assignments.filter { assignment in
@@ -19,7 +21,7 @@ enum PurchaseCSV {
             let designators = assignments.map { assignment in
                 project == nil ? "\(assignment.project): \(assignment.designators)" : assignment.designators
             }.joined(separator: "; ")
-            rows.append([part.number, part.lcsc, part.manufacturer, part.description, part.package, part.value, part.tolerance,
+            rows.append([part.number] + suppliers.map { $0 == Supplier.canonical(part.supplier) ? part.spn : "" } + [part.manufacturer, part.description, part.package, part.value, part.tolerance,
                          String(quantity), assignments.map(\.project).joined(separator: "; "), designators,
                          part.labels.joined(separator: ", "), part.datasheet] + customKeys.map { part.customFields[$0] ?? "" })
         }

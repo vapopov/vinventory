@@ -76,9 +76,11 @@ struct BOMImport: Identifiable {
         }
     }
     static func field(for header: String) -> String? {
+        if Supplier.headerSupplier(header) != nil { return "supplierNumber" }
         let key = header.lowercased().filter { $0.isLetter || $0.isNumber }
         switch key {
-        case "lcsc", "lcscpartnumber": return "lcsc"
+        case "spn", "supplierpartnumber": return "spn"
+        case "supplier": return "supplier"
         case "partnumber", "manufacturepartnumber", "manufacturerpartnumber", "mpn": return "number"
         case "manufacturer", "manufacture": return "manufacturer"
         case "description": return "description"
@@ -92,11 +94,22 @@ struct BOMImport: Identifiable {
         var result: [Part] = []
         for (index, row) in rows.enumerated() where row.selected {
             var part = Part()
+            let namedNumbers = headers.indices.filter { Supplier.headerSupplier(headers[$0]) != nil && !row.values[$0].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            let genericNumber = headers.indices.contains { Self.field(for: headers[$0]) == "spn" && !row.values[$0].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            guard namedNumbers.count <= 1, !(genericNumber && !namedNumbers.isEmpty) else {
+                throw InventoryError.message("Row \(index + 2): use one supplier part number per part.")
+            }
             for (column, header) in headers.enumerated() {
                 let raw = row.values[column]
                 let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
                 switch Self.field(for: header) {
-                case "lcsc": part.lcsc = value
+                case "supplierNumber":
+                    if !value.isEmpty {
+                        guard part.spn.isEmpty else { throw InventoryError.message("Row \(index + 2): use one supplier part number per part.") }
+                        part.spn = value; part.supplier = Supplier.headerSupplier(header) ?? ""
+                    }
+                case "spn": part.spn = value
+                case "supplier": if !value.isEmpty { part.supplier = Supplier.canonical(value) }
                 case "number": part.number = value
                 case "manufacturer": part.manufacturer = value
                 case "description": part.description = value
@@ -113,6 +126,15 @@ struct BOMImport: Identifiable {
                 default: if !ignoredCustomColumns.contains(column) { part.customFields[header] = raw }
                 }
             }
+            if let column = namedNumbers.first {
+                let namedSupplier = Supplier.headerSupplier(headers[column]) ?? ""
+                let explicitSupplier = headers.firstIndex { Self.field(for: $0) == "supplier" }.map { Supplier.canonical(row.values[$0]) } ?? ""
+                guard explicitSupplier.isEmpty || explicitSupplier == namedSupplier else {
+                    throw InventoryError.message("Row \(index + 2): supplier conflicts with the supplier column name.")
+                }
+                part.supplier = namedSupplier
+            }
+            try Supplier.validate(spn: part.spn, supplier: part.supplier)
             guard !part.number.isEmpty else { throw InventoryError.message("Row \(index + 2): enter a manufacturer part number.") }
             result.append(part)
         }

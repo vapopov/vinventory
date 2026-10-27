@@ -30,7 +30,7 @@ struct RequestEditor: View {
                 TextField("Designators", text: $item.designators)
                 TextField("Requested quantity", text: $quantity)
                 TextField("Package", text: $item.package)
-                TextField("LCSC", text: $item.lcsc)
+                SupplierFields(spn: $item.spn, supplier: $item.supplier)
             }.textFieldStyle(.roundedBorder)
             if let error { Text(error).foregroundStyle(.red) }
             HStack {

@@ -15,6 +15,8 @@ function scrape(offers, rows = []) {
   return vm.runInNewContext(source + '\nscrapeLCSC()', {document, location: {hostname: 'www.lcsc.com', pathname: '/product-detail/test_C123.html', href: 'https://www.lcsc.com/product-detail/test_C123.html'}, URL});
 }
 test('captures structured unit price with currency', () => {
+  assert.equal(scrape({}).supplier, 'LCSC');
+  assert.equal(scrape({}).spn, 'C123');
   assert.equal(scrape({price: '0.1250', priceCurrency: 'USD'}).price, 'USD 0.1250 / unit');
 });
 test('preserves visible quantity tiers ahead of an aggregate offer', () => {

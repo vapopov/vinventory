@@ -5,7 +5,30 @@ struct ProjectBOMItem: Codable, Equatable {
     var package: String
     var quantity: Int
     var value: String
-    var lcsc: String
+    var spn: String
+    var supplier: String
+    var lcsc: String {
+        get { Supplier.canonical(supplier) == "LCSC" ? spn : "" }
+        set { spn = newValue; supplier = newValue.isEmpty ? "" : "LCSC" }
+    }
+    init(designators: String, package: String, quantity: Int, value: String, lcsc: String = "", spn: String = "", supplier: String = "") {
+        self.designators = designators; self.package = package; self.quantity = quantity; self.value = value
+        self.spn = spn.isEmpty ? lcsc : spn
+        self.supplier = Supplier.canonical(supplier.isEmpty && !lcsc.isEmpty ? "LCSC" : supplier)
+    }
+    private enum CodingKeys: String, CodingKey { case designators, package, quantity, value, spn, supplier }
+    private enum LegacyKeys: String, CodingKey { case lcsc }
+    init(from decoder: Decoder) throws {
+        let data = try decoder.container(keyedBy: CodingKeys.self)
+        let legacy = try decoder.container(keyedBy: LegacyKeys.self)
+        let old = try legacy.decodeIfPresent(String.self, forKey: .lcsc) ?? ""
+        designators = try data.decode(String.self, forKey: .designators)
+        package = try data.decode(String.self, forKey: .package)
+        quantity = try data.decode(Int.self, forKey: .quantity)
+        value = try data.decode(String.self, forKey: .value)
+        spn = try data.decodeIfPresent(String.self, forKey: .spn) ?? old
+        supplier = Supplier.canonical(try data.decodeIfPresent(String.self, forKey: .supplier) ?? (old.isEmpty ? "" : "LCSC"))
+    }
     var key: String { (try? Designators.references(in: designators).sorted().joined(separator: ",")) ?? designators.uppercased() }
 }
 struct ProjectBOMEntry: Identifiable, Codable, Equatable {
@@ -33,7 +56,9 @@ struct ProjectBOMImport: Identifiable {
         guard let refs = column(["designator", "designators", "reference", "references"]), let val = column(["value", "partnumber"]), let qty = column(["quantity", "qty"]), let pkg = column(["footprint", "package"]) else {
             throw InventoryError.message("Project BOM needs Designator, Footprint, Quantity, and Value columns.")
         }
-        let lcsc = column(["lcscpart", "lcscpartnumber", "lcsc"])
+        let spn = column(["spn", "supplierpartnumber"])
+        let supplier = column(["supplier"])
+        let supplierColumns = headers.indices.filter { Supplier.headerSupplier(headers[$0]) != nil }
         var rows: [ProjectBOMReviewRow] = [], seen = Set<String>()
         for (index, cells) in csv.dropFirst().enumerated() where !cells.allSatisfy({ $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
             func cell(_ column: Int) -> String { cells.indices.contains(column) ? cells[column].trimmingCharacters(in: .whitespacesAndNewlines) : "" }
@@ -41,7 +66,16 @@ struct ProjectBOMImport: Identifiable {
             let references = try Designators.references(in: cell(refs))
             guard !references.isEmpty, seen.isDisjoint(with: references) else { throw InventoryError.message("BOM row \(index + 2) has missing or repeated designators.") }
             seen.formUnion(references)
-            let item = ProjectBOMItem(designators: cell(refs), package: cell(pkg), quantity: count, value: cell(val), lcsc: lcsc.map(cell) ?? "")
+            let populated = supplierColumns.filter { !cell($0).isEmpty }
+            guard populated.count <= 1 else { throw InventoryError.message("BOM row \(index + 2): use one supplier part number per part.") }
+            let supplierColumn = populated.first
+            guard supplierColumn == nil || (spn.map(cell) ?? "").isEmpty else {
+                throw InventoryError.message("BOM row \(index + 2): use one supplier part number per part.")
+            }
+            let number = supplierColumn.map(cell) ?? spn.map(cell) ?? ""
+            let supplierName = supplierColumn.flatMap { Supplier.headerSupplier(headers[$0]) } ?? supplier.map(cell) ?? ""
+            try Supplier.validate(spn: number, supplier: supplierName)
+            let item = ProjectBOMItem(designators: cell(refs), package: cell(pkg), quantity: count, value: cell(val), spn: number, supplier: supplierName)
             let candidates = ProjectBOMMatcher.candidates(for: item, parts: parts).map(\.id)
             let old = previous.first { $0.item.key == item.key }?.partID
             rows.append(ProjectBOMReviewRow(item: item, candidates: candidates, selectedPartID: old.flatMap { candidates.contains($0) ? $0 : nil }))
@@ -67,7 +101,7 @@ struct ProjectBOMPlan {
 enum ProjectBOMMatcher {
     static func normalized(_ text: String) -> String { text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
     static func candidates(for item: ProjectBOMItem, parts: [Part]) -> [Part] {
-        let exact = parts.filter { normalized($0.number) == normalized(item.value) || (!item.lcsc.isEmpty && normalized($0.lcsc) == normalized(item.lcsc)) }
+        let exact = parts.filter { normalized($0.number) == normalized(item.value) || Supplier.matches($0.spn, $0.supplier, item.spn, item.supplier) }
         if !exact.isEmpty { return exact.sorted { $0.number < $1.number } }
         let kind = componentKind(item)
         if let value = magnitude(item.value, kind: kind), !item.package.isEmpty {

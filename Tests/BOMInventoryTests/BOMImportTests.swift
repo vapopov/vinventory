@@ -41,7 +41,7 @@ final class BOMImportTests: XCTestCase {
         XCTAssertEqual(reopened.search("Unit Price 0.42").count, 1)
         XCTAssertTrue(reopened.storageSuggestions.contains("Drawer"))
         var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(reopened.parts[0])) as? [String: Any])
-        json.removeValue(forKey: "lcsc"); json.removeValue(forKey: "customFields")
+        json.removeValue(forKey: "spn"); json.removeValue(forKey: "supplier"); json.removeValue(forKey: "customFields")
         let legacy = try JSONDecoder().decode(Part.self, from: JSONSerialization.data(withJSONObject: json))
         XCTAssertEqual(legacy.lcsc, "")
         XCTAssertTrue(legacy.customFields.isEmpty)

@@ -117,7 +117,7 @@ struct APIResponse {
                 if (path.count == 4 && method == "POST") || (path.count == 5 && method == "PATCH") {
                     let data = try input()
                     let current = existing?.item
-                    let item = ProjectBOMItem(designators: try string(data, "designators", default: current?.designators ?? ""), package: try string(data, "package", default: current?.package ?? ""), quantity: try data["quantity"] == nil ? (existing.map { store.requestedQuantity($0) } ?? 1) : integer(data, "quantity"), value: try string(data, "value", default: current?.value ?? ""), lcsc: try string(data, "lcsc", default: current?.lcsc ?? ""))
+                    let item = ProjectBOMItem(designators: try string(data, "designators", default: current?.designators ?? ""), package: try string(data, "package", default: current?.package ?? ""), quantity: try data["quantity"] == nil ? (existing.map { store.requestedQuantity($0) } ?? 1) : integer(data, "quantity"), value: try string(data, "value", default: current?.value ?? ""), spn: try string(data, "spn", default: string(data, "lcsc", default: current?.spn ?? "")), supplier: try string(data, "supplier", default: data["lcsc"] != nil ? "LCSC" : current?.supplier ?? ""))
                     let before = Set(store.bomEntries(for: project.name).map(\.id))
                     try store.saveRequest(project: project.name, existing: existing, item: item)
                     let result = store.bomEntries(for: project.name).first { entry in existing != nil ? entry.id == existing!.id : !before.contains(entry.id) }
@@ -132,10 +132,15 @@ struct APIResponse {
         return number.intValue
     }
     func mergePart(_ part: Part, changes: [String: Any]) throws -> Part {
-        let allowed: Set<String> = ["number", "manufacturer", "lcsc", "description", "package", "value", "tolerance", "stock", "storage", "datasheet", "labels", "customFields", "barcode"]
+        let allowed: Set<String> = ["number", "manufacturer", "lcsc", "spn", "supplier", "description", "package", "value", "tolerance", "stock", "storage", "datasheet", "labels", "customFields", "barcode"]
         guard Set(changes.keys).isSubset(of: allowed) else { throw APIError(400, "Unknown or read-only part field.") }
         var data = try object(part) as! [String: Any]
-        for (key, value) in changes { data[key] = value }
+        for (key, value) in changes where key != "lcsc" { data[key] = value }
+        if let legacy = changes["lcsc"] {
+            guard changes["spn"] == nil, changes["supplier"] == nil else { throw APIError(400, "Use spn and supplier together, or the legacy lcsc field, not both.") }
+            guard let number = legacy as? String else { throw APIError(400, "lcsc must be a string.") }
+            data["spn"] = number; data["supplier"] = number.isEmpty ? "" : "LCSC"
+        }
         if let stock = changes["stock"] as? NSNumber {
             guard CFGetTypeID(stock) != CFBooleanGetTypeID(), stock.doubleValue >= 0, stock.doubleValue.rounded() == stock.doubleValue else { throw APIError(400, "stock must be a nonnegative integer.") }
         }

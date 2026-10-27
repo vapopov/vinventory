@@ -25,7 +25,7 @@ struct RequestSyncReview: View {
                         VStack(alignment: .leading, spacing: 0) {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("REQUEST • \(entry.item.designators)").fontWeight(.semibold)
-                                Text("Qty \(store.requestedQuantity(entry)) • \(entry.item.value) • \(entry.item.package) • \(entry.item.lcsc)")
+                                Text("Qty \(store.requestedQuantity(entry)) • \(entry.item.value) • \(entry.item.package) • \(entry.item.spn)")
                             }.font(.system(size: 12)).padding(10).frame(maxWidth: .infinity, alignment: .leading).background(Theme.raised)
                             let candidates = store.requestCandidates(entry)
                             ForEach(candidates) { part in

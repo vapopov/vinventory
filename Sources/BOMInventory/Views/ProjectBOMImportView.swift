@@ -82,7 +82,7 @@ struct ProjectBOMImportView: View {
     private func source(_ item: ProjectBOMItem, title: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("\(title)  •  \(item.designators)").font(.system(size: 12, weight: .semibold))
-            Text("Qty \(item.quantity)  •  \(item.value)  •  \(item.package)\(item.lcsc.isEmpty ? "" : "  •  " + item.lcsc)").font(.system(size: 12)).foregroundStyle(Theme.muted)
+            Text("Qty \(item.quantity)  •  \(item.value)  •  \(item.package)\(item.spn.isEmpty ? "" : "  •  " + item.spn)").font(.system(size: 12)).foregroundStyle(Theme.muted)
         }.padding(10).frame(maxWidth: .infinity, alignment: .leading).background(Theme.raised)
     }
 }
@@ -98,7 +98,7 @@ private struct ProjectBOMCandidateRow: View {
             Toggle("Confirm \(part.number)", isOn: $selected).labelsHidden().accessibilityLabel("Confirm match \(part.number)")
             VStack(alignment: .leading, spacing: 3) {
                 Text("\(part.number)  •  \(part.manufacturer)").fontWeight(.medium)
-                Text("\(part.value)  •  \(part.package)  •  Available \(store.available(part))\(part.lcsc.isEmpty ? "" : "  •  " + part.lcsc)").foregroundStyle(Theme.muted)
+                Text("\(part.value)  •  \(part.package)  •  Available \(store.available(part))\(part.spn.isEmpty ? "" : "  •  " + part.spn)").foregroundStyle(Theme.muted)
                 Text(part.description).foregroundStyle(Theme.muted).lineLimit(2)
             }.font(.system(size: 12))
             Spacer()

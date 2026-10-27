@@ -28,7 +28,7 @@ struct ProjectRequestsTable: NSViewRepresentable {
         table.rowHeight = 30
         table.delegate = context.coordinator
         table.dataSource = context.coordinator
-        let columns: [(String, CGFloat)] = [("#", 40), ("Designators", 180), ("Requested", 90), ("Value / Part Number", 220), ("Package", 170), ("LCSC", 100)]
+        let columns: [(String, CGFloat)] = [("#", 40), ("Designators", 180), ("Requested", 90), ("Value / Part Number", 220), ("Package", 170), ("Supplier / SPN", 160)]
         for (index, definition) in columns.enumerated() {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(String(index)))
             column.title = definition.0

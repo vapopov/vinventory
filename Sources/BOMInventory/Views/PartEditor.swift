@@ -24,7 +24,7 @@ struct PartEditor: View {
                 Form {
                     LabeledContent("Image") { PartImageEditor(image: $part.image, draft: attachmentDraft) }
                     TextField("Part number", text: $part.number)
-                    TextField("LCSC", text: $part.lcsc).help("Optional LCSC supplier part number, for example C105871.")
+                    SupplierFields(spn: $part.spn, supplier: $part.supplier)
                     LabeledContent("Manufacturer") {
                         SuggestionField(text: $part.manufacturer, placeholder: "", suggestions: store.manufacturers, filterOnTyping: true, choose: { part.manufacturer = $0 }, submit: {}).accessibilityLabel("Manufacturer")
                             .help("Choose a recent manufacturer or type a new one.")
