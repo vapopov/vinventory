@@ -26,7 +26,11 @@ struct BarcodePopover: View {
                 Text(printer.error ?? printer.status).font(.caption).foregroundStyle(printer.error == nil ? Color.white : .red).fixedSize(horizontal: false, vertical: true)
             }
             if let error { Text(error).foregroundStyle(.red) }
-        }.padding(14).background(Theme.purple)
+        }
+        .frame(width: 400)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(14)
+        .background(Theme.purple)
     }
     private func perform(_ action: () throws -> Void) { do { try action() } catch { self.error = error.localizedDescription } }
 }
