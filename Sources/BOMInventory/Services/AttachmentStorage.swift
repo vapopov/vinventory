@@ -48,6 +48,11 @@ struct AttachmentStorage {
                 } else { try ImagePreviews.write(from: original, maxPixels: 800, to: preview) }
                 result.part.image = PartImage(originalPath: original.path, thumbnailPath: thumbnail.path, previewPath: preview.path)
             }
+            for (name, path) in part.notes.images where try !owns(path, partID: part.id) {
+                let target = try newFolder().appendingPathComponent(UUID().uuidString + "-" + URL(fileURLWithPath: path).lastPathComponent)
+                try FileManager.default.copyItem(atPath: path, toPath: target.path)
+                result.part.notes.images[name] = target.path
+            }
             if !part.datasheet.isEmpty {
                 let source = try DatasheetReference.url(for: part.datasheet)
                 if source.isFileURL {
@@ -77,6 +82,7 @@ struct AttachmentStorage {
         var paths: [String] = []
         if previous.image != current.image, let image = previous.image { paths += image.paths.filter { !(current.image?.paths.contains($0) ?? false) } }
         if previous.datasheet != current.datasheet, let oldURL = try? DatasheetReference.url(for: previous.datasheet), oldURL.isFileURL { paths.append(oldURL.path) }
+        paths += previous.notes.images.values.filter { !current.notes.images.values.contains($0) }
         for path in paths where try owns(path, partID: previous.id) {
             if FileManager.default.fileExists(atPath: path) { try FileManager.default.removeItem(atPath: path) }
             let parent = URL(fileURLWithPath: path).deletingLastPathComponent()

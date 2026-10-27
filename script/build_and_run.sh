@@ -13,6 +13,7 @@ APP_MACOS="$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_MACOS" "$APP_BUNDLE/Contents/Resources"
 cp "$ROOT_DIR/Resources/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 cp "$BUILD_BINARY" "$APP_MACOS/$APP_NAME"
+cp -R "$(dirname "$BUILD_BINARY")/BOMInventory_BOMInventory.bundle" "$APP_BUNDLE/Contents/Resources/"
 cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

@@ -98,3 +98,11 @@ Once connected, the printer button prints one label directly. Use the gear butto
 The app waits for page acknowledgement, polls the printer's printed-page counter, and sends PrintEnd to feed out the label. A timeout/disconnect reports an unconfirmed print rather than success; check the paper before retrying to avoid duplicate labels. Bluetooth writes are paced and honor CoreBluetooth flow control. Physical printing must be verified on your printer; automated tests cover framing, streaming replies, run-length rows, dimensions, bitmap packing, and QR decoding of the final printer raster.
 
 Protocol adaptation and license: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+### Part notes
+
+Open **Add notes / Notes** in a part or purchase detail view. The native editor supports bold, italic, underline, and text/images pasted with **⌘V**. Save commits the note; Cancel discards edits. Notes are shared with the part across project previews. Receiving purchases carries their notes into inventory; merging with an existing part combines both notes.
+
+SQLite stores the note text and RTF formatting in the part's JSON payload. Image attachments are separate files beneath the existing managed attachment root, copied on Save and removed when replaced or when the part is deleted. Existing parts default to an empty note. Back up both the database and the attachment folder to preserve images.
+
+The enlarged notes editor is a single WYSIWYG canvas. Text formatting and pasted images appear directly in the document. Type `$V = IR$`, `$$f = \frac{1}{2\pi\sqrt{LC}}$$`, `\(...\)`, or `\[...\]` to render equations in place, or use **Equation**. Click a rendered equation to edit its LaTeX source. Undo/redo supports text, formatting, images, and equation changes. KaTeX is bundled locally and works offline. The original editable math source stays in the note's RTF alongside the text, with image files stored in the managed attachments folder.

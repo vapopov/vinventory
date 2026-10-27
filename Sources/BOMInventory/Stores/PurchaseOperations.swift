@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 extension InventoryStore {
     func purchaseSearch(_ query: String) -> [PurchaseItem] {
@@ -147,6 +148,8 @@ extension InventoryStore {
         var workingParts = parts
         var workingAllocations = allocations
         var entries = projectBOMEntries
+        let notesDraft = AttachmentDraft()
+        defer { notesDraft.discard() }
         var changedParts = Set<String>(), changedAllocations = Set<String>(), changedEntries = Set<String>()
         var prepared: [PreparedAttachments] = []
         do {
@@ -164,6 +167,17 @@ extension InventoryStore {
                     let sum = existing.stock.addingReportingOverflow(p.stock)
                     guard !sum.overflow else { throw InventoryError.message("Stock quantity is too large.") }
                     existing.stock = sum.partialValue
+                    if !p.notes.isEmpty {
+                        if existing.notes.isEmpty { existing.notes = p.notes }
+                        else {
+                            let combined = NSMutableAttributedString(attributedString: try NotesDocument.load(existing.notes))
+                            combined.append(NSAttributedString(string: "\n\n"))
+                            combined.append(try NotesDocument.load(p.notes))
+                            existing.notes = try NotesDocument.save(combined, draft: notesDraft)
+                        }
+                        let attachments = try attachmentStorage?.prepare(existing)
+                        if let attachments { prepared.append(attachments); existing = attachments.part }
+                    }
                     workingParts[index] = existing; target = existing
                 } else {
                     guard !workingParts.contains(where: { $0.id == p.id || $0.barcode == p.barcode }) else { throw InventoryError.message("Inventory barcode or identifier already exists.") }

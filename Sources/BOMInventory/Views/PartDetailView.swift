@@ -16,7 +16,7 @@ struct PartDetailView: View {
     var body: some View {
         VSplitView {
             ScrollView {
-                PartSummaryView(part: part, available: store.available(part), allocated: store.allocated(part), projects: store.projectCount(part), edit: edit)
+                PartSummaryView(store: store, part: part, available: store.available(part), allocated: store.allocated(part), projects: store.projectCount(part), edit: edit)
             }.background(Theme.panel).frame(minHeight: 300, idealHeight: 390)
             VStack(spacing: 0) {
                 HStack(spacing: 0) {

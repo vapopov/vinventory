@@ -4,6 +4,7 @@ import AppKit
 /// Shared part details for the PARTS inspector and the reusable Part Preview popup.
 struct PartSummaryView: View {
     @Environment(\.inventoryNavigation) private var navigation
+    var store: InventoryStore
     var part: Part
     var available: Int
     var allocated: Int
@@ -12,6 +13,7 @@ struct PartSummaryView: View {
     var edit: () -> Void
     var beforeNavigate: () -> Void = {}
     @State private var barcode = false
+    @State private var showingNotes = false
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top) {
@@ -43,9 +45,23 @@ struct PartSummaryView: View {
                     }
                 }.font(.system(size: 12))
             }
+            if !part.notes.isEmpty { Text(part.notes.text.replacingOccurrences(of: "\u{FFFC}", with: "[Image]")).font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(3) }
             HStack(spacing: 8) { metric(purchaseMode ? "To purchase" : "Stock", part.stock); metric("Available", available, color: Theme.green); metric("Allocated", allocated); metric("Projects", projects) }
-            HStack { Image(systemName: "archivebox"); if part.storage.isEmpty { Text("No storage assigned") } else { DestinationLink(title: part.storage, destination: "storage") { beforeNavigate(); navigation.storage(part.storage) } }; Spacer(); Button("Edit details", action: edit).buttonStyle(.plain).foregroundStyle(Theme.yellow) }.font(.system(size: 12)).foregroundStyle(Theme.muted)
+            HStack(spacing: 14) {
+                Image(systemName: "archivebox")
+                if part.storage.isEmpty { Text("No storage assigned") }
+                else { DestinationLink(title: part.storage, destination: "storage") { beforeNavigate(); navigation.storage(part.storage) } }
+                Spacer()
+                Button { showingNotes = true } label: {
+                    Label(part.notes.isEmpty ? "Add notes" : "Notes", systemImage: "note.text")
+                }.foregroundStyle(Theme.yellow)
+                Button(action: edit) { Label("Edit details", systemImage: "pencil") }.foregroundStyle(Theme.yellow)
+            }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.muted)
+
         }.padding(24)
+        .sheet(isPresented: $showingNotes) {
+            PartNotesEditor(part: part) { notes in try store.saveNotes(partID: part.id, purchase: purchaseMode, notes: notes) }
+        }
     }
     private func metric(_ title: String, _ value: Int, color: Color = .primary) -> some View {
         VStack(alignment: .leading, spacing: 6) { Text(title).foregroundStyle(Theme.muted); Text(value.formatted()).font(.system(size: 20, weight: .medium)).foregroundStyle(color).monospacedDigit() }.frame(maxWidth: .infinity, alignment: .leading).padding(11).background(Theme.selection.opacity(0.65), in: RoundedRectangle(cornerRadius: 3))

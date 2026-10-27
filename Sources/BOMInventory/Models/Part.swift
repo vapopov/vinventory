@@ -20,11 +20,12 @@ struct Part: Identifiable, Codable, Equatable {
     var datasheet = ""
     var barcode = UUID().uuidString
     var stock = 0
+    var notes = PartNotes()
     var image: PartImage?
 
     init() {}
     private enum CodingKeys: String, CodingKey {
-        case id, number, manufacturer, spn, supplier, customFields, labels, tolerance, description, package, value, storage, datasheet, barcode, stock, image
+        case id, number, manufacturer, spn, supplier, customFields, labels, tolerance, description, package, value, storage, datasheet, barcode, stock, image, notes
     }
     private enum LegacyKeys: String, CodingKey { case category, lcsc }
     init(from decoder: Decoder) throws {
@@ -53,6 +54,7 @@ struct Part: Identifiable, Codable, Equatable {
         barcode = try data.decode(String.self, forKey: .barcode)
         stock = try data.decode(Int.self, forKey: .stock)
         image = try data.decodeIfPresent(PartImage.self, forKey: .image)
+        notes = try data.decodeIfPresent(PartNotes.self, forKey: .notes) ?? PartNotes()
     }
 }
 struct PartImage: Codable, Equatable {

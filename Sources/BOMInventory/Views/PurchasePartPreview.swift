@@ -14,7 +14,7 @@ struct PurchasePartPreview: View {
             }.padding(.horizontal, 16).frame(height: 34).background(Theme.raised)
             if let item = store.purchases.first(where: { $0.id == itemID }) {
                 ScrollView {
-                    PartSummaryView(part: item.part, available: item.availableQuantity, allocated: item.allocatedQuantity, projects: item.assignments.count, purchaseMode: true, edit: { dismiss(); edit(item.part) }, beforeNavigate: dismiss)
+                    PartSummaryView(store: store, part: item.part, available: item.availableQuantity, allocated: item.allocatedQuantity, projects: item.assignments.count, purchaseMode: true, edit: { dismiss(); edit(item.part) }, beforeNavigate: dismiss)
                 }
             } else { EmptyState(title: "Purchase unavailable", subtitle: "This item is no longer in the cart.") }
         }.frame(width: 560, height: 420).font(.system(size: 13)).background(Theme.panel)

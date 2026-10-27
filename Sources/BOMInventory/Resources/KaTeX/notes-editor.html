@@ -1,0 +1,62 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src data:; connect-src 'none'">
+<link rel="stylesheet" href="katex.min.css"><script src="katex.min.js"></script>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#202027;color:#dedde4;font:16px -apple-system,BlinkMacSystemFont,sans-serif}#editor{outline:none;min-height:100vh;padding:22px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65}#editor:empty:before{content:'Write notes here…';color:#8c899c;pointer-events:none}img{max-width:100%;height:auto}.math{display:inline-block;white-space:normal;cursor:pointer;border-radius:4px;padding:2px 4px}.math:hover{background:#493c75}.math[data-display="true"]{display:block;text-align:center;overflow-x:auto;padding:12px}.katex-display{margin:.3em 0}.math:focus{outline:1px solid #f7dc68}dialog{background:#292830;color:#dedde4;border:1px solid #676174;border-radius:10px;padding:22px;width:min(540px,90vw)}dialog::backdrop{background:#0006}h3{margin:0 0 14px}textarea{width:100%;min-height:100px;padding:10px;background:#202027;color:#fff;border:1px solid #676174;border-radius:4px;font:15px monospace;resize:vertical}label{display:block;margin-top:12px}#equationError{color:#ff827f;white-space:pre-wrap;font-size:13px}.actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}button{background:#f7dc68;color:#111;border:none;border-radius:4px;padding:9px 16px;font-size:14px;cursor:pointer}#equationHint{font-size:13px;color:#b0aabc}
+</style></head><body>
+<div id="editor" contenteditable="true" role="textbox" aria-label="Part notes" aria-multiline="true" spellcheck="true"></div>
+<dialog id="equationDialog"><form id="equationForm"><h3>Equation</h3><textarea id="latex" aria-label="LaTeX equation" placeholder="V = IR"></textarea><div id="equationHint">Enter LaTeX without $ delimiters.</div><label><input id="display" type="checkbox"> Display equation on its own line</label><p id="equationError"></p><div class="actions"><button id="cancelEquation" type="button">Cancel</button><button type="submit">Apply equation</button></div></form></dialog>
+<script>
+const editor=document.getElementById('editor'), dialog=document.getElementById('equationDialog'), source=document.getElementById('latex'), display=document.getElementById('display'), error=document.getElementById('equationError');
+let savedRange=null, editingMath=null, history=[], historyIndex=-1, lastCommit=0, loading=false;
+const options={throwOnError:true,trust:false,maxExpand:1000,maxSize:20};
+function rememberSelection(){const s=getSelection();if(s.rangeCount && editor.contains(s.anchorNode)) savedRange=s.getRangeAt(0).cloneRange();}
+function restoreSelection(){editor.focus();const s=getSelection();s.removeAllRanges();if(savedRange && editor.contains(savedRange.startContainer))s.addRange(savedRange);else{const r=document.createRange();r.selectNodeContents(editor);r.collapse(false);s.addRange(r);}}
+document.addEventListener('selectionchange',rememberSelection);
+function makeMath(latex,block){const span=document.createElement('span');span.className='math';span.contentEditable='false';span.tabIndex=0;span.dataset.latex=latex;span.dataset.display=String(block);span.setAttribute('role','math');span.setAttribute('aria-label',latex);span.title='Click to edit equation';katex.render(latex,span,{...options,displayMode:block});return span;}
+function renderTypedMath(){
+ const selection=getSelection();let marker=null;
+ if(selection.rangeCount && editor.contains(selection.anchorNode) && selection.isCollapsed){marker=document.createElement('span');marker.dataset.caret='';selection.getRangeAt(0).insertNode(marker);}
+ const walker=document.createTreeWalker(editor,NodeFilter.SHOW_TEXT,{acceptNode:n=>n.parentElement.closest('.math')?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT});
+ const nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);
+ for(const node of nodes){const pattern=/\$\$([\s\S]+?)\$\$|\\\(([\s\S]+?)\\\)|\\\[([\s\S]+?)\\\]|(?<!\$)\$(?!\$)([^$\n]+?)\$(?!\$)/g;const text=node.data;let match,last=0,changed=false;const fragment=document.createDocumentFragment();
+  while((match=pattern.exec(text))){let atom;try{atom=makeMath(match[1]??match[2]??match[3]??match[4],match[1]!==undefined||match[3]!==undefined);}catch{continue;}
+   fragment.append(document.createTextNode(text.slice(last,match.index)),atom);last=match.index+match[0].length;changed=true;
+  }if(changed){fragment.append(document.createTextNode(text.slice(last)));node.replaceWith(fragment);}
+ }
+ if(marker){const range=document.createRange();range.setStartBefore(marker);range.collapse(true);marker.remove();selection.removeAllRanges();selection.addRange(range);rememberSelection();}
+ editor.normalize();
+}
+function commit(group=false){if(loading)return;const html=editor.innerHTML;if(history[historyIndex]===html)return;const now=Date.now();if(group&&historyIndex>0&&now-lastCommit<500)history[historyIndex]=html;else{history.splice(historyIndex+1);history.push(html);if(history.length>60)history.shift();historyIndex=history.length-1;}lastCommit=now;}
+function undo(direction){const next=historyIndex+direction;if(next<0||next>=history.length)return;historyIndex=next;editor.innerHTML=history[next];savedRange=null;restoreSelection();}
+editor.addEventListener('input',event=>{if(event.isComposing)return;renderTypedMath();commit(event.inputType==='insertText');});
+editor.addEventListener('compositionend',()=>{renderTypedMath();commit();});
+editor.addEventListener('keydown',event=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='z'){event.preventDefault();undo(event.shiftKey?1:-1);}if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='y'){event.preventDefault();undo(1);}});
+editor.addEventListener('paste',event=>{event.preventDefault();rememberSelection();window.webkit?.messageHandlers.notes.postMessage({action:'paste'});});
+editor.addEventListener('drop',event=>event.preventDefault());
+function insertHTML(html){restoreSelection();document.execCommand('insertHTML',false,html);renderTypedMath();commit();rememberSelection();}
+function openEquation(atom=null){rememberSelection();editingMath=atom;source.value=atom?.dataset.latex??'';display.checked=atom?.dataset.display==='true';error.textContent='';dialog.showModal();source.focus();}
+editor.addEventListener('click',event=>{const atom=event.target.closest('.math');if(atom)openEquation(atom);});
+editor.addEventListener('keydown',event=>{if(event.key==='Enter'&&event.target.classList.contains('math')){event.preventDefault();openEquation(event.target);}});
+document.getElementById('cancelEquation').onclick=()=>{dialog.close();restoreSelection();};
+document.getElementById('equationForm').onsubmit=event=>{event.preventDefault();if(!source.value.trim()){error.textContent='Enter an equation.';return;}let atom;try{atom=makeMath(source.value,display.checked);}catch(e){error.textContent=e.message;return;}dialog.close();restoreSelection();const selection=getSelection();let range=selection.getRangeAt(0);if(editingMath&&editor.contains(editingMath)){range=document.createRange();range.selectNode(editingMath);}range.deleteContents();range.insertNode(atom);range.setStartAfter(atom);range.collapse(true);selection.removeAllRanges();selection.addRange(range);rememberSelection();commit();};
+function exportTokens(){if(dialog.open)throw Error('Apply or cancel the equation edit before saving notes.');const tokens=[];
+ function emit(value,style){if(value)tokens.push({kind:'text',value,...style});}
+ function lastText(){const last=tokens[tokens.length-1];return last?.kind==='text'?last.value:'';}
+ function walk(node,style={bold:false,italic:false,underline:false}){
+  if(node.nodeType===Node.TEXT_NODE){emit(node.data,style);return;}if(node.nodeType!==Node.ELEMENT_NODE)return;
+  if(node.classList.contains('math')){tokens.push({kind:'math',value:node.dataset.latex,display:node.dataset.display==='true',...style});return;}
+  if(node.tagName==='IMG'){if(node.src.startsWith('data:image/'))tokens.push({kind:'image',value:node.src,...style});return;}
+  if(node.tagName==='BR'){emit('\n',style);return;}
+  const weight=node.style.fontWeight;
+  style={bold:style.bold||['B','STRONG'].includes(node.tagName)||weight==='bold'||Number(weight)>=600,italic:style.italic||['I','EM'].includes(node.tagName)||node.style.fontStyle==='italic',underline:style.underline||node.tagName==='U'||node.style.textDecoration.includes('underline')};
+  const block=['DIV','P','LI','H1','H2','H3','BLOCKQUOTE'].includes(node.tagName)&&node!==editor;
+  if(block&&tokens.length&&!lastText().endsWith('\n'))emit('\n',style);
+  for(const child of node.childNodes)walk(child,style);
+  if(block&&node.nextSibling&&!lastText().endsWith('\n'))emit('\n',style);
+ }
+ for(const child of editor.childNodes)walk(child);return tokens;
+}
+window.notes={load(html){loading=true;editor.innerHTML=html;renderTypedMath();loading=false;history=[editor.innerHTML];historyIndex=0;savedRange=null;},command(name,value){if(name==='equation')openEquation();else if(name==='insertHTML')insertHTML(value);else if(name==='paste'){rememberSelection();window.webkit?.messageHandlers.notes.postMessage({action:'paste'});}else if(name==='undo')undo(-1);else if(name==='redo')undo(1);else{restoreSelection();document.execCommand(name,false,null);commit();rememberSelection();}return true;},exportTokens};
+document.execCommand('defaultParagraphSeparator',false,'div');
+</script></body></html>

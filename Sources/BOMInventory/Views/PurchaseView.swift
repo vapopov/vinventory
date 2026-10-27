@@ -46,7 +46,7 @@ struct PurchaseView: View {
             if let item = selected {
                 PersistentVerticalSplit(key: "purchase.details.summaryFraction") {
                     ScrollView {
-                        PartSummaryView(part: item.part, available: item.availableQuantity, allocated: item.allocatedQuantity, projects: item.assignments.count, purchaseMode: true, edit: { edit(item.part) })
+                        PartSummaryView(store: store, part: item.part, available: item.availableQuantity, allocated: item.allocatedQuantity, projects: item.assignments.count, purchaseMode: true, edit: { edit(item.part) })
                     }
                 } bottom: {
                     VStack(spacing: 0) {

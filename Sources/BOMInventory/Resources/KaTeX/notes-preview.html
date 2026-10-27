@@ -1,0 +1,11 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src data:; connect-src 'none'">
+<link rel="stylesheet" href="katex.min.css"><script src="katex.min.js"></script><script src="auto-render.min.js"></script>
+<style>:root{color-scheme:dark}body{margin:0;padding:18px;background:#202027;color:#dedde4;font:15px -apple-system,BlinkMacSystemFont,sans-serif;overflow-wrap:anywhere}#notes{white-space:pre-wrap;line-height:1.6}img{max-width:100%;height:auto;vertical-align:middle}.katex-display{overflow-x:auto;overflow-y:hidden;padding:6px 0;white-space:normal}.katex{white-space:normal}</style></head>
+<body><div id="notes"></div><script>
+window.updateNotes = function(html) {
+ const target = document.getElementById('notes'); target.innerHTML = html;
+ renderMathInElement(target, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},{left:'\\(',right:'\\)',display:false},{left:'\\[',right:'\\]',display:true}],throwOnError:false,trust:false,maxExpand:1000,maxSize:20});
+};
+</script></body></html>
