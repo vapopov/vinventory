@@ -45,6 +45,10 @@ struct ProjectsView: View {
         if requestedTab { return store.bomEntries(for: project.name).reduce(0) { $0 + store.requestedQuantity($1) } }
         return (bulkAdding ? Array(bulkDrafts.values) : matching).reduce(0) { $0 + $1.quantity }
     }
+    private var bulkActionTitle: String {
+        if purchaseTab { return bulkAdding ? "Apply purchase assignments" : "Bulk add purchase items" }
+        return bulkAdding ? "Apply bulk allocations" : "Bulk add parts"
+    }
     private var pendingCount: Int { bulkDrafts.values.filter { $0.quantity != 0 || !$0.designators.isEmpty }.count }
     private var pages: Int { max(1, (displayed.count + pageSize - 1) / pageSize) }
     private var rowSelection: Binding<String?> {
@@ -62,14 +66,17 @@ struct ProjectsView: View {
                         Text("ALLOCATIONS IN \(project.name.uppercased())").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)
                         Button(action: toggleBulkAdding) {
                             Image(systemName: bulkAdding ? "checkmark" : "plus.square.on.square").font(.system(size: 12, weight: .semibold)).frame(width: 26, height: 26)
-                        }.buttonStyle(.plain).foregroundStyle(Theme.yellow).help(bulkAdding ? "Apply bulk allocations" : "Bulk add parts")
-                            .accessibilityLabel(bulkAdding ? "Apply bulk allocations" : "Bulk add parts").disabled(bomImport != nil || requestedTab || purchaseTab)
+                        }.buttonStyle(.plain).foregroundStyle(Theme.yellow).help(bulkActionTitle)
+                            .accessibilityLabel(bulkActionTitle).disabled(bomImport != nil || requestedTab)
                         Button(action: chooseProjectBOM) { Image(systemName: "arrow.down.to.line").font(.system(size: 12, weight: .semibold)).frame(width: 26, height: 26) }
                             .buttonStyle(.plain).foregroundStyle(Theme.yellow).help("Import project BOM").accessibilityLabel("Import project BOM").disabled(bulkAdding || bomImport != nil)
                         HStack(spacing: 0) {
                         Button("Allocated") { requestedTab = false; purchaseTab = false }.buttonStyle(ProjectBOMTabStyle(selected: !requestedTab && !purchaseTab)).disabled(bomImport != nil || bulkAdding)
                         Button("Requested") { requestedTab = true; purchaseTab = false }.buttonStyle(ProjectBOMTabStyle(selected: requestedTab)).disabled(bomImport != nil || bulkAdding)
                         Button("Purchase") { requestedTab = false; purchaseTab = true }.buttonStyle(ProjectBOMTabStyle(selected: purchaseTab)).disabled(bomImport != nil || bulkAdding)
+                        }
+                        if purchaseTab && bomImport == nil {
+                            PurchaseExportButton(store: store, project: project.name)
                         }
                         if requestedTab && bomImport == nil {
                             Button(action: exportRequested) { Image(systemName: "arrow.up.to.line").frame(width: 26, height: 26) }
@@ -86,7 +93,7 @@ struct ProjectsView: View {
                     if let review = bomImport {
                         ProjectBOMImportView(document: review, project: project.name, store: store, finish: { bomImport = nil }, editPart: editPart, showPart: showPart).id(review.id)
                     } else if purchaseTab {
-                        ProjectPurchasesView(store: store, project: project.name, query: query).id(project.id)
+                        ProjectPurchasesView(store: store, project: project.name, query: query, bulkAdding: bulkAdding, drafts: $bulkDrafts).id(project.id)
                     } else if requestedTab {
                         ProjectRequestsView(store: store, project: project.name, query: query)
                     } else {
@@ -159,7 +166,11 @@ struct ProjectsView: View {
         if bulkAdding {
             guard let project else { return }
             do {
-                try store.allocateBulk(projectName: project.name, drafts: bulkDrafts.values.sorted { $0.partID < $1.partID })
+                if purchaseTab {
+                    try store.assignPurchaseBulk(project: project.name, drafts: Array(bulkDrafts.values))
+                } else {
+                    try store.allocateBulk(projectName: project.name, drafts: bulkDrafts.values.sorted { $0.partID < $1.partID })
+                }
                 cancelBulkAdding()
             } catch { store.error = error.localizedDescription }
         } else {

@@ -17,6 +17,7 @@ struct PurchaseView: View {
             VStack(spacing: 0) {
                 HStack {
                     Text("PURCHASE").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)
+                    PurchaseExportButton(store: store)
                     Button {
                         if receiving {
                             store.perform { try store.receivePurchases(ids: checked); receiving = false; checked = []; selection = nil }
