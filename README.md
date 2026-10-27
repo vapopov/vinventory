@@ -88,3 +88,13 @@ Use **Bulk receive purchases** beside the PURCHASE title, check delivered items,
 The [Chrome extension](chrome-extension/README.md) imports an LCSC product into
 Purchase with a photo, datasheet link, and checkbox-selected project allocations.
 It uses the same app logo and supports a configurable local API address and port.
+
+## Niimbot B1 Bluetooth printing
+
+The barcode-label popup includes a **Print** (printer) button. On first use it opens printer controls: power on the B1, close other apps connected to it, click **Scan**, select the printer, and **Connect**. Allow Bluetooth access when macOS asks. The connected device is identified as a B1 (model 4096); B1 Pro and other models are deliberately rejected because they need different resolution/task settings.
+
+Once connected, the printer button prints one label directly. Use the gear button for connection controls, 1–20 copies, and density 1–5. The last successful printer selection and density are remembered. Printing uses a native 384 × 240 monochrome raster for 50 × 30 mm B1 labels at 203 dpi, including the reference protocol's +4-row registration offset. PNG/PDF exports retain their existing resolution and physical size.
+
+The app waits for page acknowledgement, polls the printer's printed-page counter, and sends PrintEnd to feed out the label. A timeout/disconnect reports an unconfirmed print rather than success; check the paper before retrying to avoid duplicate labels. Bluetooth writes are paced and honor CoreBluetooth flow control. Physical printing must be verified on your printer; automated tests cover framing, streaming replies, run-length rows, dimensions, bitmap packing, and QR decoding of the final printer raster.
+
+Protocol adaptation and license: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

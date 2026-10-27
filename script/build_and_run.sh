@@ -25,6 +25,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 <key>CFBundleShortVersionString</key><string>1.0</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
+<key>NSBluetoothAlwaysUsageDescription</key><string>Connect to your Niimbot B1 to print component labels over Bluetooth.</string>
 <key>NSCameraUsageDescription</key><string>Scan component barcodes and QR codes to search your inventory.</string>
 <key>NSPrincipalClass</key><string>NSApplication</string>
 <key>NSHighResolutionCapable</key><true/>

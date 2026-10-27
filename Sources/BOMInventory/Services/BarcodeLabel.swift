@@ -11,9 +11,9 @@ import UniformTypeIdentifiers
         image.addRepresentation(bitmap)
         return image
     }
-    private static func bitmap(for part: Part) throws -> NSBitmapImageRep {
-        let width = Int((labelSize.width * dpi / 72).rounded())
-        let height = Int((labelSize.height * dpi / 72).rounded())
+    static func bitmap(for part: Part, pixelWidth: Int? = nil, pixelHeight: Int? = nil) throws -> NSBitmapImageRep {
+        let width = pixelWidth ?? Int((labelSize.width * dpi / 72).rounded())
+        let height = pixelHeight ?? Int((labelSize.height * dpi / 72).rounded())
         guard let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
               let context = NSGraphicsContext(bitmapImageRep: bitmap) else { throw InventoryError.message("Could not create label image.") }
         bitmap.size = labelSize
