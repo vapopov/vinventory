@@ -44,10 +44,12 @@ struct PurchaseView: View {
                 PaginationBar(count: items.count, page: $page, pageSize: $pageSize, unit: "purchase item")
             }.frame(minWidth: 630, idealWidth: 930)
             if let item = selected {
-                VStack(spacing: 0) {
+                PersistentVerticalSplit(key: "purchase.details.summaryFraction") {
                     ScrollView {
                         PartSummaryView(part: item.part, available: item.availableQuantity, allocated: item.allocatedQuantity, projects: item.assignments.count, purchaseMode: true, edit: { edit(item.part) })
                     }
+                } bottom: {
+                    VStack(spacing: 0) {
                     HStack {
                         Text("PROJECT PURCHASES").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)
                         Spacer()
@@ -64,7 +66,8 @@ struct PurchaseView: View {
                                 }.buttonStyle(.plain).padding(14).background(Theme.panel)
                             }
                         }
-                    }.frame(minHeight: 120)
+                    }.frame(maxHeight: .infinity)
+                    }
                 }.frame(minWidth: 440, idealWidth: 550).background(Theme.panel)
             } else { EmptyState(title: "Select a purchase item", subtitle: "Add components to plan purchases, assign projects, and receive stock.").frame(minWidth: 440) }
         }
