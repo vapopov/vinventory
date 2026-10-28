@@ -213,7 +213,26 @@ struct PartsTable: NSViewRepresentable {
             label.alignment = ["stock", "quantity", "rowNumber"].contains(key) ? .right : .left
             label.translatesAutoresizingMaskIntoConstraints = false
             cell.addSubview(label); cell.textField = label
-            NSLayoutConstraint.activate([label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 9), label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -9), label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)])
+            NSLayoutConstraint.activate([label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 9), label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)])
+            if key == "number", !part.notes.isEmpty {
+                let notes = NSImageView()
+                notes.image = NSImage(systemSymbolName: "note.text", accessibilityDescription: "Notes attached")
+                notes.symbolConfiguration = NSImage.SymbolConfiguration(paletteColors: [NSColor(Theme.yellow)])
+                notes.contentTintColor = NSColor(Theme.yellow)
+                notes.toolTip = "Notes attached"
+                notes.setAccessibilityElement(true)
+                notes.setAccessibilityLabel("Notes attached")
+                notes.translatesAutoresizingMaskIntoConstraints = false
+                cell.addSubview(notes)
+                NSLayoutConstraint.activate([
+                    label.trailingAnchor.constraint(equalTo: notes.leadingAnchor, constant: -6),
+                    notes.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -9),
+                    notes.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                    notes.widthAnchor.constraint(equalToConstant: 14), notes.heightAnchor.constraint(equalToConstant: 14)
+                ])
+            } else {
+                label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -9).isActive = true
+            }
             cell.toolTip = text
             return cell
         }

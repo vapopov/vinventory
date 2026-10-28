@@ -45,7 +45,6 @@ struct PartSummaryView: View {
                     }
                 }.font(.system(size: 12))
             }
-            if !part.notes.isEmpty { Text(part.notes.text.replacingOccurrences(of: "\u{FFFC}", with: "[Image]")).font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(3) }
             HStack(spacing: 8) { metric(purchaseMode ? "To purchase" : "Stock", part.stock); metric("Available", available, color: Theme.green); metric("Allocated", allocated); metric("Projects", projects) }
             HStack(spacing: 14) {
                 Image(systemName: "archivebox")
