@@ -2,6 +2,9 @@
 
 Native macOS 14+ component inventory, built with SwiftUI and a small AppKit table bridge. The interface follows the supplied charcoal, purple, and yellow references, using the macOS system sans-serif font. No third-party dependencies are required.
 
+https://github.com/user-attachments/assets/42118366-f694-4c9e-b5c1-083347b58aa1
+
+
 ## Run
 
 Use the Codex **Run** action or run:
