@@ -41,7 +41,7 @@ swift test
 
 ## Storage and extension
 
-Data lives in `~/Library/Application Support/BOMInventory/inventory.sqlite`. Attachments live beside it in `Attachments/`, grouped by part ID. Back up the database and this folder together while the app is closed.
+Data lives in `~/Library/Application Support/BOMInventory/inventory.sqlite`. Attachments live beside it in `Attachments/`, grouped by part ID. The Backup control beside API uses restic to back up a consistent SQLite snapshot and the managed attachments together while the app is open.
 
 `InventoryRepository` defines the persistence boundary. `SQLiteRepository` currently stores Codable payloads in part/allocation tables alongside a persistent label catalog with a unique barcode constraint and cascading allocation deletion. Schema version is tracked with `PRAGMA user_version`. A future PostgreSQL implementation can conform to the repository interface; remote asynchronous operations, credentials, and migrations will require additional work. Current search and pagination run in memory and are intended for local inventories.
 
@@ -109,3 +109,13 @@ Open **Add notes / Notes** in a part or purchase detail view. The native editor 
 SQLite stores the note text and RTF formatting in the part's JSON payload. Image attachments are separate files beneath the existing managed attachment root, copied on Save and removed when replaced or when the part is deleted. Existing parts default to an empty note. Back up both the database and the attachment folder to preserve images.
 
 The enlarged notes editor is a single WYSIWYG canvas. Text formatting and pasted images appear directly in the document. Type `$V = IR$`, `$$f = \frac{1}{2\pi\sqrt{LC}}$$`, `\(...\)`, or `\[...\]` to render equations in place, or use **Equation**. Click a rendered equation to edit its LaTeX source. Undo/redo supports text, formatting, images, and equation changes. KaTeX is bundled locally and works offline. The original editable math source stays in the note's RTF alongside the text, with image files stored in the managed attachments folder.
+
+### Restic backups
+
+Install `restic` (for example, `brew install restic`), then click **Backup** beside **API**. The badge is grey when restic is missing or no destinations are configured, and orange when restic is available with configured destinations. The app checks PATH and the standard Homebrew locations.
+
+Use **Configure** to add or remove repositories. Enter a destination such as `s3:https://server:port/bucket_name` and credentials as literal `ENV_NAME=ENV_VALUE` lines, for example `AWS_ACCESS_KEY_ID=...` and `AWS_SECRET_ACCESS_KEY=...`. Values are passed directly to restic without shell expansion or quote removal. Settings and endpoint credentials are saved in `~/Library/Application Support/BOMInventory/backup-settings.json` with owner-only file permissions; this settings file is excluded from backup payloads.
+
+For a new repository, choose **Initialize…**, then enter and confirm a password. Existing repositories can be saved without initialization. **Sync** asks for the password once and backs up to each configured destination in order, continuing if a destination fails. All destinations in a Sync operation must use the same password. The password is passed via `RESTIC_PASSWORD` for the operation and is never saved. Keep it safe: restic needs it to restore your backups.
+
+The popup shows the last successful backup recorded by this app for each destination and the latest operation's raw combined output and exit statuses. Output appears when each repository command completes. An exit status other than zero is not recorded as a successful backup. Backups contain `inventory.sqlite` and `Attachments/` and use the restic tag `bom-inventory`. Restore with restic to a separate folder, close the app, and replace the database and attachments in the application support directory together.

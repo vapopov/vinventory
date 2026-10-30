@@ -63,6 +63,7 @@ struct ContentView: View {
                 ProjectsView(store: store, query: query, projectSelection: $projectSelection, partSelection: $selection, editPart: { editor = $0 }, showPart: navigateToPart)
             }
             HStack { Circle().fill(Theme.green).frame(width: 6, height: 6); Text("LOCAL INVENTORY").font(.system(size: 10, weight: .semibold)); Spacer(); Text("SQLite  •  \(store.parts.count) parts").font(.system(size: 11))
+                BackupButton(store: store)
                 Button { apiSettings.toggle() } label: {
                     Text("API").font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
                         .padding(.horizontal, 7).padding(.vertical, 3).background(Theme.green.opacity(api.running ? 1 : 0.65), in: RoundedRectangle(cornerRadius: 3))

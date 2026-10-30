@@ -288,3 +288,15 @@ final class SQLiteRepository: InventoryRepository {
     }
     func delete(_ allocation: Allocation) throws { try execute("DELETE FROM allocations WHERE id=?", values: [allocation.id]) }
 }
+
+extension SQLiteRepository {
+    func writeBackup(to url: URL) throws {
+        var target: OpaquePointer?
+        guard sqlite3_open(url.path, &target) == SQLITE_OK else { if let target { sqlite3_close(target) }; throw InventoryError.message("Cannot create database backup.") }
+        defer { sqlite3_close(target) }
+        guard let backup = sqlite3_backup_init(target, "main", db, "main") else { throw InventoryError.message("Cannot initialize database backup.") }
+        let status = sqlite3_backup_step(backup, -1)
+        let finish = sqlite3_backup_finish(backup)
+        guard status == SQLITE_DONE && finish == SQLITE_OK else { throw InventoryError.message("Cannot create a consistent database backup. Try again when the database is idle.") }
+    }
+}
