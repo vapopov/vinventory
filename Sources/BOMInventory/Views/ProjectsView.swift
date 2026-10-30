@@ -16,6 +16,7 @@ struct ProjectsView: View {
     @State private var bulkAdding = false
     @State private var bulkDrafts: [String: Allocation] = [:]
     @State private var allocationSelection: String?
+    @State private var notesProject: Project?
     @State private var catalogDraft: CatalogDraft?
     @State private var deletingCatalog = false
     @State private var page = 0
@@ -121,6 +122,11 @@ struct ProjectsView: View {
                 }
             }.frame(minWidth: 710, maxHeight: .infinity).background(Theme.row)
         }
+        .sheet(item: $notesProject) { project in
+            PartNotesEditor(title: project.name, notes: project.notes) { notes in
+                try store.saveProjectNotes(projectName: project.name, notes: notes)
+            }
+        }
         .sheet(item: $catalogDraft) { draft in
             CatalogEditor(kind: .project, draft: draft) { name, description in
                 let saved = try store.saveCatalog(kind: .project, originalName: draft.originalName, name: name, description: description)
@@ -201,11 +207,11 @@ struct ProjectsView: View {
                 if let item = project { catalogDraft = CatalogDraft(originalName: item.name, name: item.name, description: item.description) }
             }, delete: { deletingCatalog = true })
             }.padding(.horizontal, 14).frame(height: 40).background(Theme.raised)
-            HStack { Text("Name").frame(width: 130, alignment: .leading); Text("Description").frame(maxWidth: .infinity, alignment: .leading) }.foregroundStyle(Theme.muted).padding(.horizontal, 14).frame(height: 32).background(Theme.raised.opacity(0.7))
+            HStack(spacing: 10) { Text("Name").frame(width: 130, alignment: .leading); Text("Description").frame(maxWidth: .infinity, alignment: .leading); Color.clear.frame(width: 26).accessibilityHidden(true) }.foregroundStyle(Theme.muted).padding(.horizontal, 14).frame(height: 32).background(Theme.raised.opacity(0.7))
             ScrollView {
                 LazyVStack(spacing: 1) {
                     ForEach(store.projects) { project in
-                        CatalogRow(name: project.name, description: project.description, selected: projectSelection == project.id, select: { projectSelection = project.id })
+                        CatalogRow(name: project.name, description: project.description, selected: projectSelection == project.id, select: { projectSelection = project.id }, hasNotes: !project.notes.isEmpty, editNotes: { notesProject = project })
                     }
                 }
             }.focusable().focused($projectsFocused).onMoveCommand { direction in

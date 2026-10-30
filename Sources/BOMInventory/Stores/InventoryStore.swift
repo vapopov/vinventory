@@ -71,7 +71,12 @@ import Observation
         return name
     }
     func deleteCatalog(kind: CatalogKind, name: String) throws {
+        let notesID = kind == .project ? projects.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }?.notesAttachmentID : nil
         try repository.deleteCatalog(kind: kind, name: name)
+        if let notesID {
+            do { try attachmentStorage?.removePart(notesID) }
+            catch { self.error = "Project deleted, but its note images could not be removed: \(error.localizedDescription)" }
+        }
         try reload()
     }
     // Draft labels stay on the editor's part; only saved assignments enter autocomplete.

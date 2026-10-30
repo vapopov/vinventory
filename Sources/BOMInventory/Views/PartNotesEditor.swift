@@ -49,16 +49,19 @@ import AppKit
 
 struct PartNotesEditor: View {
     @Environment(\.dismiss) private var dismiss
-    var part: Part
+    var title: String
     var save: (PartNotes) throws -> Void
     @StateObject private var session: NotesEditorSession
     init(part: Part, save: @escaping (PartNotes) throws -> Void) {
-        self.part = part; self.save = save
-        _session = StateObject(wrappedValue: NotesEditorSession(notes: part.notes))
+        self.init(title: part.number, notes: part.notes, save: save)
+    }
+    init(title: String, notes: PartNotes, save: @escaping (PartNotes) throws -> Void) {
+        self.title = title; self.save = save
+        _session = StateObject(wrappedValue: NotesEditorSession(notes: notes))
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Notes — \(part.number)").font(.title2.bold())
+            Text("Notes — \(title)").font(.title2.bold())
             HStack(spacing: 14) {
                 Button { session.command("bold") } label: { Image(systemName: "bold") }.help("Bold")
                 Button { session.command("italic") } label: { Image(systemName: "italic") }.help("Italic")

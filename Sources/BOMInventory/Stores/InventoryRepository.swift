@@ -11,6 +11,7 @@ protocol InventoryRepository {
     func loadProjectBOMEntries() throws -> [ProjectBOMEntry]
     func saveProjectBOM(entries: [ProjectBOMEntry], allocations: [Allocation], removing: [String], removingEntries: [String]) throws
     func loadProjects() throws -> [Project]
+    func saveProjectNotes(name: String, attachmentID: String, notes: PartNotes) throws
     func saveProjectDescription(name: String, description: String) throws
     func loadStorageDescriptions() throws -> [String: String]
     func saveStorageDescription(name: String, description: String) throws
@@ -40,6 +41,7 @@ final class SQLiteRepository: InventoryRepository {
         try execute("CREATE TABLE IF NOT EXISTS field_values (field TEXT NOT NULL, name TEXT NOT NULL COLLATE NOCASE, last_used INTEGER NOT NULL, PRIMARY KEY(field, name))")
         try execute("CREATE TABLE IF NOT EXISTS storage_descriptions (name TEXT PRIMARY KEY COLLATE NOCASE, description TEXT NOT NULL)")
         try execute("CREATE TABLE IF NOT EXISTS projects (name TEXT PRIMARY KEY COLLATE NOCASE, description TEXT NOT NULL)")
+        try execute("CREATE TABLE IF NOT EXISTS project_notes (project TEXT PRIMARY KEY COLLATE NOCASE REFERENCES projects(name) ON UPDATE CASCADE ON DELETE CASCADE, attachment_id TEXT NOT NULL, payload TEXT NOT NULL)")
         try execute("CREATE TABLE IF NOT EXISTS purchases (id TEXT PRIMARY KEY, payload TEXT NOT NULL)")
         try execute("CREATE TABLE IF NOT EXISTS project_bom_entries (id TEXT PRIMARY KEY, payload TEXT NOT NULL)")
         for allocation in try loadAllocations() { try ensureProject(allocation.project) }
@@ -60,7 +62,7 @@ final class SQLiteRepository: InventoryRepository {
         }
         for label in DescriptionAnalysis.builtInLabels { try execute("INSERT OR IGNORE INTO labels VALUES (?, 0)", values: [label]) }
         try pruneUnusedSuggestions()
-        try execute("PRAGMA user_version = 9")
+        try execute("PRAGMA user_version = 10")
     }
     deinit { sqlite3_close(db) }
     private func execute(_ sql: String, values: [String] = []) throws {
@@ -96,15 +98,23 @@ final class SQLiteRepository: InventoryRepository {
         try execute("INSERT OR IGNORE INTO projects VALUES (?, '')", values: [trimmed])
     }
     func loadProjects() throws -> [Project] {
-        let statement = try prepare("SELECT name, description FROM projects ORDER BY name COLLATE NOCASE", values: [])
+        let statement = try prepare("SELECT p.name, p.description, n.attachment_id, n.payload FROM projects p LEFT JOIN project_notes n ON n.project=p.name ORDER BY p.name COLLATE NOCASE", values: [])
         defer { sqlite3_finalize(statement) }
         var projects: [Project] = []
         while true {
             let status = sqlite3_step(statement)
             if status == SQLITE_DONE { return projects }
             guard status == SQLITE_ROW, let name = sqlite3_column_text(statement, 0), let description = sqlite3_column_text(statement, 1) else { throw failure() }
-            projects.append(Project(name: String(cString: name), description: String(cString: description)))
+            var project = Project(name: String(cString: name), description: String(cString: description))
+            if let id = sqlite3_column_text(statement, 2), let payload = sqlite3_column_text(statement, 3) {
+                project.notesAttachmentID = String(cString: id)
+                project.notes = try JSONDecoder().decode(PartNotes.self, from: Data(String(cString: payload).utf8))
+            }
+            projects.append(project)
         }
+    }
+    func saveProjectNotes(name: String, attachmentID: String, notes: PartNotes) throws {
+        try execute("INSERT INTO project_notes(project, attachment_id, payload) VALUES (?, ?, ?) ON CONFLICT(project) DO UPDATE SET attachment_id=excluded.attachment_id, payload=excluded.payload", values: [name, attachmentID, try json(notes)])
     }
     func saveProjectDescription(name: String, description: String) throws {
         try execute("UPDATE projects SET description=? WHERE name=?", values: [description, name])

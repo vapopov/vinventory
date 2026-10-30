@@ -26,14 +26,24 @@ struct CatalogRow: View {
     var description: String
     var selected: Bool
     var select: () -> Void
+    var hasNotes: Bool? = nil
+    var editNotes: () -> Void = {}
     var body: some View {
-        Button(action: select) {
-            HStack(spacing: 10) {
-                Text(name).frame(width: 130, alignment: .leading).lineLimit(1)
-                Text(description.isEmpty ? "—" : description).foregroundStyle(Theme.muted).frame(maxWidth: .infinity, alignment: .leading).lineLimit(1)
-            }.padding(.horizontal, 14).frame(height: 34).contentShape(Rectangle())
-                .background(selected ? Theme.selection : Theme.row)
-        }.buttonStyle(.plain).accessibilityLabel(name).accessibilityAddTraits(selected ? .isSelected : [])
+        HStack(spacing: 10) {
+            Button(action: select) {
+                HStack(spacing: 10) {
+                    Text(name).frame(width: 130, alignment: .leading).lineLimit(1)
+                    Text(description.isEmpty ? "—" : description).foregroundStyle(Theme.muted).frame(maxWidth: .infinity, alignment: .leading).lineLimit(1)
+                }.frame(height: 34).contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityLabel(name).accessibilityAddTraits(selected ? .isSelected : [])
+            if let hasNotes {
+                Button(action: editNotes) {
+                    Image(systemName: "note.text").foregroundStyle(hasNotes ? Theme.yellow : Theme.muted)
+                        .frame(width: 26, height: 26).contentShape(Rectangle())
+                }.buttonStyle(.plain).help(hasNotes ? "Edit notes for \(name)" : "Add notes for \(name)")
+                    .accessibilityLabel(hasNotes ? "Edit notes for \(name)" : "Add notes for \(name)")
+            }
+        }.padding(.horizontal, 14).frame(height: 34).background(selected ? Theme.selection : Theme.row)
     }
 }
 struct CatalogEditor: View {
